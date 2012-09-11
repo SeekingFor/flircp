@@ -42,7 +42,18 @@ public class RAMstore {
 		this.currentDateString = getCurrentUtcDate();
 		this.config = new Config();
 		this.announceKey="KSK@" + this.config.messageBase + "|"+ this.currentDateString + "|Announce|" + announceEdition;
-		this.welcomeText = "Welcome to flircp. This plugin provides realtime chat for Freenet. Latency is mostly 20 to 30 seconds on a well connected node. flircp is compatible with FLIP so you can communicate with other users of flircp and FLIP. This software is currently in alpha stage (" + config.version_major + "." + config.version_major + "). If you find a bug or hava a feature proposal please tell me (SeekingFor) about it in the channel #flircp. Kudos to somedude for writing FLIP in the first place. Also thanks karl for his patches for FLIP and TheSeeker for helping me out with various issues I had. If you want to use an IRC client you can check out the fsng tutorial for FLIP written by JustusRanvier. As this is the first time you start flircp please take the time to configure your settings. Currently there is no permanent storage implemented, if you restart the plugin (or your Freenet node) all settings will be lost and you have to configure flircp again. If you have any questions feel free to head over to #flircp. Your announcment to other users will be kind of slow in this version, the next version will improve this.";
+		this.welcomeText = "[b]Welcome to flircp.[/b]\n\n";
+		this.welcomeText += "This plugin provides a realtime chat for Freenet.\n";
+		this.welcomeText += "Latency is mostly 20 to 30 seconds on a well connected node.\n";
+		this.welcomeText += "flircp is compatible with FLIP so you can communicate with other users of flircp and FLIP.\n";
+		this.welcomeText += "This software is currently in alpha stage (" + config.version_major + "." + config.version_minor + "." + config.version_debug + ").\n";
+		this.welcomeText += "If you find a bug or hava a feature proposal please tell me (SeekingFor) about. You can reach me in #flircp.\n\n";
+		this.welcomeText += "Kudos to somedude for writing [a]FLIP[/a] in the first place. Also thanks karl for his patches for FLIP and TheSeeker for helping me out with various issues I had.\n";
+		this.welcomeText += "If you want to use a IRC client instead this plugin you can check out the [a]Freenet Social Network Guide for FLIP[/a] written by JustusRanvier.\n\n";
+		this.welcomeText += "As this is the first time you start flircp please take the time to configure your settings.\n";
+		this.welcomeText += "Currently there is no permanent storage implemented, if you restart the plugin (or your Freenet node) all settings will be lost and you have to configure flircp again.\n\n";
+		this.welcomeText += "Your announcment to other users will be kind of slow in this version, next versions will improve this.";
+		this.welcomeText += "If you have any questions feel free to head over to #flircp.";
 	}
 	
 	public class Config {
@@ -52,7 +63,8 @@ public class RAMstore {
 		public short maxMessageRetriesAfterDNF = 10;
 		public String messageBase = "flip";
 		public int version_major = 0;
-		public int version_minor = 1;
+		public int version_minor = 0;
+		public int version_debug = 2;
 		// ident
 		public String nick = "flircp_testuser";
 		public String requestKey = "";
@@ -110,21 +122,31 @@ public class RAMstore {
 		}
 		
 	}
-	public void addNewChannel(String channelName) {
-		Boolean found = false;
-		for(channel chan : channelList) {
-			if(chan != null && chan.name.equals(channelName)) {
-				found = true;
-				break;
+	public Boolean addNewChannel(String channelName) {
+		// don't allow:
+		// - channels not starting with #
+		// - channels with more than one #
+		// - channels without #
+		// - channels with empty name
+		// TODO: add max size
+		if(channelName.startsWith("#") &&
+				channelName.replace("#", "").length() == channelName.length() - 1 &&
+				!channelName.equals("#")) {
+			Boolean found = false;
+			for(channel chan : channelList) {
+				if(chan != null && chan.name.equals(channelName)) {
+					found = true;
+					break;
+				}
 			}
-		}
-		if(!found) {
-			// don't allow channels with more than one #
-			if(!(channelName.replace("#", "").length() > channelName.length() + 1)) {
+			if(!found) {
 				channelList.add(new channel(channelName));
 				Collections.sort(channelList);
 			}
+		} else {
+			return false;
 		}
+		return true;
 	}
 	public channel getChannel(String channelName) {
 		for(channel channel : channelList) {
@@ -135,16 +157,20 @@ public class RAMstore {
 		return null;
 	}
 	public void setTopic(String channelName, String newTopic) {
-		for(channel channel : channelList) {
-			if(channel.name.equals(channelName)) {
-				channel.topic = newTopic;
-			}
+		if(getChannel(channelName) != null) {
+			getChannel(channelName).topic = newTopic;
 		}
+//		for(channel channel : channelList) {
+//			if(channel.name.equals(channelName)) {
+//				channel.topic = newTopic;
+//			}
+//		}
 	}
 	public class users {
 		// FIXME: change editions to long
 		// TODO: clean this up and remove unnecessary variables.
 		public String nick;
+		public String originalNick;
 		public String RSA;
 		public long identEdition;
 		public long messageEditionHint;
@@ -158,8 +184,10 @@ public class RAMstore {
 		public long message_ddos;
 		public Boolean identSubscriptionActive;
 		public List<String> failedMessageRequests;
+		public long lastMessageTime;
 		public users() {
 			this.nick = "";
+			this.originalNick = "";
 			this.RSA = "";
 			this.identEdition = -1;
 			this.messageEditionHint = -1;
@@ -173,17 +201,16 @@ public class RAMstore {
 			this.message_ddos = 0;
 			this.identSubscriptionActive = false;
 			this.failedMessageRequests = new ArrayList<String>();
+			this.lastMessageTime = new Date().getTime();
 		}
 	}
 	public class PlainTextMessage {
-		// FIXME: index needed?
 		public String message;
 		public String ident;
 		public String nickname;
 		public String chan;
 		public long timeStamp;
 		public int index;
-		//public int index;
 		public PlainTextMessage(String ident, String message, String nickname, String chan, long timeStamp, int messageIndex) {
 			this.message = message;
 			this.ident = ident;
@@ -205,7 +232,7 @@ public class RAMstore {
 	}
 	public void addUserToChannel(String requestKey, String channel) {
 		userMap.get(requestKey).lastActivity = new Date().getTime();
-		if(!isUserInChannel(requestKey, channel)) {
+		if(!userMap.get(requestKey).channels.contains(channel)) {
 			userMap.get(requestKey).channels.add(channel);
 			userMap.get(requestKey).channelCount += 1;
 			getChannel(channel).currentUserCount += 1;
@@ -259,7 +286,7 @@ public class RAMstore {
 	// identity functions
 	// FIXME: clean this up, mixed with general functions like utc date and getMessageBase()
 	public void checkUserActivity() {
-		// 1000 ms * 60 s * 16 minutes
+		// 1000 ms * 60 seconds * 16 minutes
 		long datetimeToKick = new Date().getTime() - 16 * 60 * 1000;
 		try {
 			for(String ident : knownIdents) {
@@ -283,6 +310,23 @@ public class RAMstore {
 			}
 		}
 		return false;
+	}
+	public String getWhoIs(String nickname) {
+		if(!config.nick.equals(nickname)) {
+			for(String ident : knownIdents) {
+				if(userMap.get(ident).nick.equals(nickname)) {
+					String channels = "";
+					for(String channel : userMap.get(ident).channels) {
+						channels += channel + " ";
+					}
+					channels = channels.substring(0, channels.length() - 1);
+					return "[" + nickname + "]" + " Public key: " + ident + "\n[" + nickname + "]" + " channels: " + channels + "\n[" + nickname + "]" + " has been idle: " + ((new Date().getTime() - userMap.get(ident).lastMessageTime) / 1000) + " seconds" ;
+				}
+			}
+		} else {
+			return "[" + nickname + "]" + " Public key: " + config.requestKey + "\n[" + nickname + "]" + " has been idle: " + ((new Date().getTime() - userMap.get(config.requestKey).lastMessageTime) / 1000) + " seconds" ;
+		}
+		return "[WHOIS] nick not found.";
 	}
 	public Boolean isIdentityFound(String requestKey) {
 		return userMap.get(requestKey).identityRequested;
@@ -336,8 +380,15 @@ public class RAMstore {
 	public String getNick(String identRequestKey) {
 		return userMap.get(identRequestKey).nick;
 	}
+	public String getOriginalNick(String identRequestKey) {
+		return userMap.get(identRequestKey).originalNick;
+	}
 	public void setNick(String identRequestKey, String newNick) {
+		setNick(identRequestKey, newNick, newNick);
+	}
+	public void setNick(String identRequestKey, String newNick, String newOriginalNick) {
 		userMap.get(identRequestKey).nick = newNick;
+		userMap.get(identRequestKey).originalNick = newOriginalNick;
 	}
 	public long getIdentEdition(String identRequestKey) {
 		return userMap.get(identRequestKey).identEdition;

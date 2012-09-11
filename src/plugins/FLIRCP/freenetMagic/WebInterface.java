@@ -83,7 +83,7 @@ public class WebInterface extends Toadlet {
 		} else if(requestedPath.startsWith("channelWindow")) {
 			if(mStorage.config.firstStart) {
 				mPageNode = ctx.getPageMaker().getPageNode("Hello stranger. Welcome to flircp", true, ctx);
-				mPageNode = createConfig(mPageNode, new HTMLNode("b", mStorage.welcomeText));
+				mPageNode = createConfig(mPageNode, parseWelcomeMessage(mStorage.welcomeText));
 			} else {
 				mPageNode = ctx.getPageMaker().getPageNode("flircp #test", true, ctx);
 				mPageNode = createChannelWindow(mPageNode, "#test");
@@ -92,7 +92,7 @@ public class WebInterface extends Toadlet {
 		} else if(requestedPath.equals("options")) {
 			if(mStorage.config.firstStart) {
 				mPageNode = ctx.getPageMaker().getPageNode("Hello stranger. Welcome to flircp", true, ctx);
-				mPageNode = createConfig(mPageNode, new HTMLNode("b", mStorage.welcomeText));
+				mPageNode = createConfig(mPageNode, parseWelcomeMessage(mStorage.welcomeText));
 			} else {
 				mPageNode = ctx.getPageMaker().getPageNode("flircp configuration", true, ctx);
 				mPageNode = createConfig(mPageNode);
@@ -120,7 +120,7 @@ public class WebInterface extends Toadlet {
 			String channel = requestedPath.split("=")[1];
 			if(mStorage.config.firstStart) {
 				mPageNode = ctx.getPageMaker().getPageNode("Hello stranger. Welcome to flircp", true, ctx);
-				mPageNode = createConfig(mPageNode, new HTMLNode("b", mStorage.welcomeText));
+				mPageNode = createConfig(mPageNode, parseWelcomeMessage(mStorage.welcomeText));
 			} else {
 				mPageNode = ctx.getPageMaker().getPageNode("flircp #" + channel, true, ctx);
 				mPageNode = createChannelWindow(mPageNode, "#" + channel);
@@ -162,6 +162,61 @@ public class WebInterface extends Toadlet {
 		return input;
 	}
 	
+	private HTMLNode parseWelcomeCreateA(String tag) {
+		HTMLNode aNode = new HTMLNode("a", tag);
+		if(tag.equals("FLIP")) {
+			aNode.addAttribute("href", "../USK@pGQPA-9PcFiE3A2tCuCjacK165UaX07AQYw98iDQrNA,8gwQ67ytBNR03hNj7JU~ceeew22HVq6G50dcEeMcgks,AQACAAE/flip/7/");
+		} else if(tag.equals("Freenet Social Network Guide for FLIP")) {
+			aNode.addAttribute("href", "../USK@t5zaONbYd5DvGNNSokVnDCdrIEytn9U5SSD~pYF0RTE,guWyS9aCMcywU5PFBrKsMiXs7LzwKfQlGSRi17fpffc,AQACAAE/fsng/32/flip.html");
+		} else {
+			aNode.addAttribute("href", "not found");
+		}
+		aNode.addAttribute("target", "_blank");
+		return aNode;
+	}
+	private HTMLNode parseWelcomeMessage(String message) {
+		// TODO: use freenets html parser instead?
+		HTMLNode ownContentNode = new HTMLNode("div");
+		ownContentNode.addAttribute("style", "margin:auto; width:55em; word-wrap: break-word;");
+		String buffer;
+		for(String line : message.split("\n")) {
+			buffer = "";
+			for(String word : line.split(" ")) {
+				if(!buffer.equals("") && (word.startsWith("[a]") || word.startsWith("[b]"))) {
+					ownContentNode.addChild(new HTMLNode("span", buffer));
+					buffer = "";
+				}
+				if(word.startsWith("[a]") && word.contains("[/a]")) {
+					buffer = word.replace("[a]", "").replace("[/a]", "");
+					ownContentNode.addChild(parseWelcomeCreateA(buffer));
+					buffer = " ";
+				} else if(word.startsWith("[a]") && !word.contains("[/a]")) {
+					buffer = word.replace("[a]", "") + " ";
+				} else if(word.contains("[/a]")) {
+					buffer += word.replace("[/a]", "");
+					ownContentNode.addChild(parseWelcomeCreateA(buffer));
+					buffer = " ";
+				} else if(word.startsWith("[b]") && word.contains("[/b]")) {
+					ownContentNode.addChild(new HTMLNode("b", word.replace("[b]", "").replace("[/b]", "")));
+					buffer = " ";
+				} else if(word.startsWith("[b]") && !word.contains("[/b]")) {
+					buffer = word.replace("[b]", "") + " ";
+				} else if(word.contains("[/b]")) {
+					buffer += word.replace("[/b]", "");
+					ownContentNode.addChild(new HTMLNode("b", buffer));
+					buffer = " ";
+				} else {
+					buffer += word + " ";
+				}
+			}
+			if(!buffer.equals(" ")) {
+				ownContentNode.addChild(new HTMLNode("span", buffer));
+			}
+			ownContentNode.addChild(new HTMLNode("br"));
+		}
+		return ownContentNode;
+	}
+	
 	private void handleWriteMessage(String channel, String message) {
 		// FIXME: check form password and max size! first dev release you know..
 		// FIXME: max size is currently "checked" by using only the first 512 bytes from POST input.
@@ -173,17 +228,48 @@ public class WebInterface extends Toadlet {
 		//
 		//ping
 		// FIXME: use substring instead of replace
-		if(message.startsWith("/me")) { message = (char) 1 + message.replace("/me","") + (char) 1; }
-		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-		sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
-		String out = "channel=" + channel + "\n";
-		out += "sentdate=" + sdf.format(new Date().getTime()) + "\n";
-		out += "type=channelmessage\n\n";
-		out += message;
-		mPtrWorker.insertMessage(mStorage.new PlainTextMessage("message", out, "", channel, 0, 0));
-		//mStorage.getChannel(channel).lastMessageIndex += 1;
-		mStorage.getChannel(channel).messages.add(mStorage.new PlainTextMessage(mStorage.config.requestKey, message, mStorage.config.nick, channel, new Date().getTime(), mStorage.getChannel(channel).lastMessageIndex));
-		mStorage.updateLastMessageActivityForChannel(channel);
+		if(message.toLowerCase().startsWith("/whois ")) {
+			message = message.replace("/whois ", "").replace("/WHOIS ", "");
+			mStorage.getChannel(channel).messages.add(mStorage.new PlainTextMessage(mStorage.config.requestKey, "\n" + mStorage.getWhoIs(message), "*", channel, new Date().getTime(), mStorage.getChannel(channel).lastMessageIndex));
+		} else if(message.toLowerCase().startsWith("/topic ")) {
+			message = message.replace("/topic ", "").replace("/TOPIC ", "");
+		} else if(message.toLowerCase().startsWith("/help")) {
+			message = message.replace("/help", "").replace("/HELP", "");
+			if(message.startsWith(" ")) {
+				message = message.substring(1, message.length());
+			}
+			if(message.equals("")) {
+				//message = "flircp commands:\n- /me [message]\twrites messages as third person\n- /whois [nick]\tshows public key, connected channels and time since last message\n- /topic [newTopic]\tchanges the topic\n- /help [command]\tshows help for [command] or this text if no command given- /version\tshows version of flircp";
+				message = "\n";
+				message += "flircp commands:\n";
+				message += "- /me [message]\t\twrites messages as third person\n";
+				message += "- /whois [nick]\t\tshows public key, connected channels and time since last message\n";
+				//message += "- /topic [newTopic]\tchanges the topic to newTopic\n";
+				message += "- /version\t\tshows version of flircp";
+				mStorage.getChannel(channel).messages.add(mStorage.new PlainTextMessage(mStorage.config.requestKey, message, "*", channel, new Date().getTime(), mStorage.getChannel(channel).lastMessageIndex));
+			}
+		} else if(message.toLowerCase().startsWith("/version")) {
+			message = "\n[version] current flircp version: " + mStorage.config.version_major + "." + mStorage.config.version_minor + "." + mStorage.config.version_debug;
+			mStorage.getChannel(channel).messages.add(mStorage.new PlainTextMessage(mStorage.config.requestKey, message, "*", channel, new Date().getTime(), mStorage.getChannel(channel).lastMessageIndex));
+		} else if(message.length() > 0) {
+			if(message.toLowerCase().startsWith("/me")) {
+				message = (char) 1 + "ACTION" + message.substring(3, message.length()) + (char) 1;
+			}
+			SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+			sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+			String out = "channel=" + channel + "\n";
+			out += "sentdate=" + sdf.format(new Date().getTime()) + "\n";
+			out += "type=channelmessage\n\n";
+			out += message;
+			mPtrWorker.insertMessage(mStorage.new PlainTextMessage("message", out, "", channel, 0, 0));
+			if(!message.startsWith((char) 1 + "ACTION")) {
+				mStorage.getChannel(channel).messages.add(mStorage.new PlainTextMessage(mStorage.config.requestKey, message, mStorage.config.nick, channel, new Date().getTime(), mStorage.getChannel(channel).lastMessageIndex));
+			} else {
+				mStorage.getChannel(channel).messages.add(mStorage.new PlainTextMessage(mStorage.config.requestKey, mStorage.config.nick + message.replace((char) 1 + "ACTION", "").replace("" + (char) 1, ""), "*", channel, new Date().getTime(), mStorage.getChannel(channel).lastMessageIndex));
+			}
+			//mStorage.getChannel(channel).lastMessageIndex += 1;
+			mStorage.updateLastMessageActivityForChannel(channel);
+		}
 	}
 	private String createIframeContent(String channel) {
 		String iFrameHTML = "<html>\n";
@@ -193,11 +279,13 @@ public class WebInterface extends Toadlet {
 		iFrameHTML += "<body>\n";
 		if(mStorage.getChannel(channel) != null) {
 			iFrameHTML += "<form action='setValueFromIFrame' method='POST'>\n";
-			iFrameHTML += "<table border='0' cellspacing='0' cellpadding='0'>\n";
+			iFrameHTML += "<table border='0' cellspacing='0' cellpadding='0' height='100%' width='100%'>\n";
 			iFrameHTML += "<tr>\n";
 			iFrameHTML += "<td valign='top'>\n";
-			iFrameHTML += "<input type='text' name='topic' size='" + mStorage.config.topiclineWidth + "' value='" + mStorage.getChannel(channel).topic.replace("'", "´").replace("\"","´") + "' />\n";
-			iFrameHTML += "<textarea cols='" + mStorage.config.textareaWidth + "' rows='" + mStorage.config.textareaHeight + "' readonly='readonly'>\n";
+			//iFrameHTML += "<input type='text' name='topic' size='" + mStorage.config.topiclineWidth + "' value='" + mStorage.getChannel(channel).topic.replace("'", "´").replace("\"","´") + "' />\n";
+			//iFrameHTML += "<textarea cols='" + mStorage.config.textareaWidth + "' rows='" + mStorage.config.textareaHeight + "' readonly='readonly'>\n";
+			iFrameHTML += "<input type='text' name='topic' value='" + mStorage.getChannel(channel).topic.replace("'", "´").replace("\"","´") + "' style='width: 100%;' />\n";
+			iFrameHTML += "<textarea style='height: 100%; width: 100%;' readonly='readonly'>\n";
 			int messageIndex = 0;
 			SimpleDateFormat sdf = new SimpleDateFormat("z HH:mm:ss");
 			sdf.setTimeZone(TimeZone.getTimeZone(mStorage.config.timeZone));
@@ -214,14 +302,15 @@ public class WebInterface extends Toadlet {
 			mStorage.getChannel(channel).lastShowedIndex = messageIndex;
 			iFrameHTML += "</textarea>";
 			iFrameHTML += "</td>\n";
-			iFrameHTML += "<td valign='top'>\n";
+			iFrameHTML += "<td valign='top' width='" + (mStorage.config.userlistWidth + 2) + "px'>\n";
 			iFrameHTML += "<input type='submit' name='whois' value='whois'>\n";
 			iFrameHTML += "<input type='submit' name='pm' value='PM'>\n";
 			iFrameHTML += "<br />\n";
 			iFrameHTML += "<input type='submit' name='operator' value='Operator'>\n";
 			iFrameHTML += "<input type='submit' name='voice' value='Voice'>\n";
 			iFrameHTML += "<br />\n";
-			iFrameHTML += "<select multiple='multiple' style='width: " + mStorage.config.userlistWidth + "px; height: " + mStorage.config.userlistHeight + "px;'>\n";
+			//iFrameHTML += "<select multiple='multiple' style='width: " + mStorage.config.userlistWidth + "px; height: " + mStorage.config.userlistHeight + "px;'>\n";
+			iFrameHTML += "<select multiple='multiple' style='width: 100%; height: 100%;'>\n";
 			// TODO: add config option for first empty line 
 			if(1 == 2) { iFrameHTML += "<option> </option>\n"; }
 			// returns a new list => no concurrent modifications possible
@@ -308,14 +397,14 @@ public class WebInterface extends Toadlet {
 		// RSA private key
 		input = req.getPartAsStringFailsafe("RSAprivateKey",1024);
 		mStorage.config.RSAprivateKey = input;
-		// chatline width
-		input = req.getPartAsStringFailsafe("chatLineWidth", 10);
-		try {
-			mStorage.config.chatLineWidth = Integer.parseInt(input);
-		} catch (NumberFormatException e) {
-			error = true;
-			errorMsg += "wrong format for chatline width. must be an integer.\n";
-		}
+//		// chatline width
+//		input = req.getPartAsStringFailsafe("chatLineWidth", 10);
+//		try {
+//			mStorage.config.chatLineWidth = Integer.parseInt(input);
+//		} catch (NumberFormatException e) {
+//			error = true;
+//			errorMsg += "wrong format for chatline width. must be an integer.\n";
+//		}
 		// iFrame height
 		input = req.getPartAsStringFailsafe("iframeHeight", 10);
 		try {
@@ -324,14 +413,14 @@ public class WebInterface extends Toadlet {
 			error = true;
 			errorMsg += "wrong format for iFrame height. must be an integer.\n";
 		}
-		// iFrame width
-		input = req.getPartAsStringFailsafe("iframeWidth", 10);
-		try {
-			mStorage.config.iFrameWidth = Integer.parseInt(input);
-		} catch (NumberFormatException e) {
-			error = true;
-			errorMsg += "wrong format for iFrame width. must be an integer.\n";
-		}
+//		// iFrame width
+//		input = req.getPartAsStringFailsafe("iframeWidth", 10);
+//		try {
+//			mStorage.config.iFrameWidth = Integer.parseInt(input);
+//		} catch (NumberFormatException e) {
+//			error = true;
+//			errorMsg += "wrong format for iFrame width. must be an integer.\n";
+//		}
 		// iFrame refresh interval
 		input = req.getPartAsStringFailsafe("iframeRefreshInverval", 10);
 		try {
@@ -340,38 +429,38 @@ public class WebInterface extends Toadlet {
 			error = true;
 			errorMsg += "wrong format for iFrame refresh interval. must be an integer.\n";
 		}
-		// textarea height
-		input = req.getPartAsStringFailsafe("textareaHeight", 10);
-		try {
-			mStorage.config.textareaHeight = Integer.parseInt(input);
-		} catch (NumberFormatException e) {
-			error = true;
-			errorMsg += "wrong format for textarea height. must be an integer.\n";
-		}
-		// textarea width
-		input = req.getPartAsStringFailsafe("textareaWidth", 10);
-		try {
-			mStorage.config.textareaWidth = Integer.parseInt(input);
-		} catch (NumberFormatException e) {
-			error = true;
-			errorMsg += "wrong format for textarea width. must be an integer.\n";
-		}
-		// topicline width
-		input = req.getPartAsStringFailsafe("topiclineWidth", 10);
-		try {
-			mStorage.config.topiclineWidth = Integer.parseInt(input);
-		} catch (NumberFormatException e) {
-			error = true;
-			errorMsg += "wrong format for topicline width. must be an integer.\n";
-		}
-		// userlist height
-		input = req.getPartAsStringFailsafe("userlistHeight", 10);
-		try {
-			mStorage.config.userlistHeight = Integer.parseInt(input);
-		} catch (NumberFormatException e) {
-			error = true;
-			errorMsg += "wrong format for userlist height. must be an integer.\n";
-		}
+//		// textarea height
+//		input = req.getPartAsStringFailsafe("textareaHeight", 10);
+//		try {
+//			mStorage.config.textareaHeight = Integer.parseInt(input);
+//		} catch (NumberFormatException e) {
+//			error = true;
+//			errorMsg += "wrong format for textarea height. must be an integer.\n";
+//		}
+//		// textarea width
+//		input = req.getPartAsStringFailsafe("textareaWidth", 10);
+//		try {
+//			mStorage.config.textareaWidth = Integer.parseInt(input);
+//		} catch (NumberFormatException e) {
+//			error = true;
+//			errorMsg += "wrong format for textarea width. must be an integer.\n";
+//		}
+//		// topicline width
+//		input = req.getPartAsStringFailsafe("topiclineWidth", 10);
+//		try {
+//			mStorage.config.topiclineWidth = Integer.parseInt(input);
+//		} catch (NumberFormatException e) {
+//			error = true;
+//			errorMsg += "wrong format for topicline width. must be an integer.\n";
+//		}
+//		// userlist height
+//		input = req.getPartAsStringFailsafe("userlistHeight", 10);
+//		try {
+//			mStorage.config.userlistHeight = Integer.parseInt(input);
+//		} catch (NumberFormatException e) {
+//			error = true;
+//			errorMsg += "wrong format for userlist height. must be an integer.\n";
+//		}
 		// userlist width
 		input = req.getPartAsStringFailsafe("userlistWidth", 10);
 		try {
@@ -417,7 +506,7 @@ public class WebInterface extends Toadlet {
 		PageNode mPageNode; 
 		if(mStorage.config.firstStart) {
 			mPageNode = ctx.getPageMaker().getPageNode("Hello stranger. Welcome to flircp", true, ctx);
-			return createConfig(mPageNode, new HTMLNode("b", mStorage.welcomeText));
+			return createConfig(mPageNode, parseWelcomeMessage(mStorage.welcomeText));
 		} else {
 			// FIXME: make it configurable which page to show here
 			mPageNode = ctx.getPageMaker().getPageNode("flircp #test", true, ctx);
@@ -449,19 +538,19 @@ public class WebInterface extends Toadlet {
 		tmpTDnode = new HTMLNode("th", "description");
 		tmpTRnode.addChild(tmpTDnode);
 		table.addChild(tmpTRnode);
-		table.addChild(addConfigTR("nick", "nick", 16, mStorage.config.nick, ""));
+		table.addChild(addConfigTR("nick", "nick", 16, mStorage.config.nick, "nick length must be < 16"));
 		table.addChild(addConfigTR("freenet request key", "requestKey", 100, mStorage.config.requestKey, ""));
 		table.addChild(addConfigTR("freenet insert key", "insertKey", 100, mStorage.config.insertKey, ""));
 		table.addChild(addConfigTR("public RSA key", "RSApublicKey", 100, mStorage.config.RSApublicKey, ""));
 		table.addChild(addConfigTR("private RSA key", "RSAprivateKey", 100, mStorage.config.RSAprivateKey, ""));
-		table.addChild(addConfigTR("topicline width", "topiclineWidth", 4, Integer.toString(mStorage.config.topiclineWidth), "topicline width in chars"));
-		table.addChild(addConfigTR("chatline width", "chatLineWidth", 4, Integer.toString(mStorage.config.chatLineWidth), "chatline width in chars"));
+		//table.addChild(addConfigTR("topicline width", "topiclineWidth", 4, Integer.toString(mStorage.config.topiclineWidth), "topicline width in chars"));
+		//table.addChild(addConfigTR("chatline width", "chatLineWidth", 4, Integer.toString(mStorage.config.chatLineWidth), "chatline width in chars"));
 		table.addChild(addConfigTR("iFrame height", "iframeHeight", 4, Integer.toString(mStorage.config.iFrameHeight), "iFrame height in px"));
-		table.addChild(addConfigTR("iFrame width", "iframeWidth", 4, Integer.toString(mStorage.config.iFrameWidth), "iFrame width in px"));
+		//table.addChild(addConfigTR("iFrame width", "iframeWidth", 4, Integer.toString(mStorage.config.iFrameWidth), "iFrame width in px"));
 		table.addChild(addConfigTR("iFrame refresh interval", "iframeRefreshInverval", 4, Integer.toString(mStorage.config.iFrameRefreshInverval), "refresh interval in seconds"));
-		table.addChild(addConfigTR("textarea height", "textareaHeight", 4, Integer.toString(mStorage.config.textareaHeight), "textarea height in rows"));
-		table.addChild(addConfigTR("textarea width", "textareaWidth", 4, Integer.toString(mStorage.config.textareaWidth), "textarea width in cols (chars?)"));
-		table.addChild(addConfigTR("userlist height", "userlistHeight", 4, Integer.toString(mStorage.config.userlistHeight), "userlist height in px"));
+		//table.addChild(addConfigTR("textarea height", "textareaHeight", 4, Integer.toString(mStorage.config.textareaHeight), "textarea height in rows"));
+		//table.addChild(addConfigTR("textarea width", "textareaWidth", 4, Integer.toString(mStorage.config.textareaWidth), "textarea width in cols (chars?)"));
+		//table.addChild(addConfigTR("userlist height", "userlistHeight", 4, Integer.toString(mStorage.config.userlistHeight), "userlist height in px"));
 		table.addChild(addConfigTR("userlist width", "userlistWidth", 4, Integer.toString(mStorage.config.userlistWidth), "userlist width in px"));
 		table.addChild(addConfigTR("timezone", "timezone", 10, mStorage.config.timeZone, "timezone used for the chat window. messages will use UTC."));
 		// TODO: add type to addConfigTR: text, check, select
@@ -525,8 +614,10 @@ public class WebInterface extends Toadlet {
 		}
 		mPageNode.content.addChild(new HTMLNode("span", " |"));
 		HTMLNode iframe = new HTMLNode("iframe");
-		iframe.addAttribute("width", Integer.toString(mStorage.config.iFrameWidth));
+		//iframe.addAttribute("width", Integer.toString(mStorage.config.iFrameWidth));
 		iframe.addAttribute("height", Integer.toString(mStorage.config.iFrameHeight));
+		iframe.addAttribute("width", "100%");
+		//iframe.addAttribute("height", "100%");
 		iframe.addAttribute("scrolling", "no");
 		iframe.addAttribute("name", "flircp_iframe");
 		iframe.addAttribute("src", "show?channel="+ channel.replace("#",""));
@@ -537,7 +628,8 @@ public class WebInterface extends Toadlet {
 		HTMLNode inputbox = new HTMLNode("input");
 		inputbox.addAttribute("type", "text");
 		inputbox.addAttribute("name", "messageinput");
-		inputbox.addAttribute("size", Integer.toString(mStorage.config.chatLineWidth));
+		//inputbox.addAttribute("size", Integer.toString(mStorage.config.chatLineWidth));
+		inputbox.addAttribute("style", "width: 100%;");
 		inputbox.addAttribute("autofocus", "autofocus");
 		inputbox.addAttribute("autocomplete", "off");
 		formMain.addChild(iframe);
@@ -597,16 +689,20 @@ public class WebInterface extends Toadlet {
 		tmpTdNode.setContent("messageparser");
 		tmpTrNode.addChild(tmpTdNode);
 		tmpTdNode = new HTMLNode("td", Integer.toString(mPtrWorker.getMessageParser().getCurrentQueueSize()));
+		tmpTdNode.addAttribute("align", "right");
 		tmpTrNode.addChild(tmpTdNode);
-		tmpTdNode = new HTMLNode("td", Float.toString(mPtrWorker.getMessageParser().getProcessingTime()));
+		tmpTdNode = new HTMLNode("td", String.format("%.8f", mPtrWorker.getMessageParser().getProcessingTime()));
+		tmpTdNode.addAttribute("align", "right");
 		tmpTrNode.addChild(tmpTdNode);
 		table.addChild(tmpTrNode);
 		tmpTrNode = new HTMLNode("tr");
 		tmpTdNode = new HTMLNode("th", "insertqueue");
 		tmpTrNode.addChild(tmpTdNode);
 		tmpTdNode = new HTMLNode("td", Integer.toString(mPtrWorker.getCurrentQueueSize()));
+		tmpTdNode.addAttribute("align", "right");
 		tmpTrNode.addChild(tmpTdNode);
-		tmpTdNode = new HTMLNode("td", Float.toString(mPtrWorker.getProcessingTime()));
+		tmpTdNode = new HTMLNode("td", String.format("%.8f", mPtrWorker.getProcessingTime()));
+		tmpTdNode.addAttribute("align", "right");
 		tmpTrNode.addChild(tmpTdNode);
 		table.addChild(tmpTrNode);
 		return table;

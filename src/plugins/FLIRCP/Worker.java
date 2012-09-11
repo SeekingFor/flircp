@@ -11,6 +11,7 @@ import java.util.TimeZone;
 
 import freenet.client.HighLevelSimpleClient;
 import freenet.client.InsertBlock;
+import freenet.client.InsertContext;
 import freenet.client.InsertException;
 import freenet.keys.FreenetURI;
 import freenet.pluginmanager.PluginRespirator;
@@ -24,7 +25,7 @@ import plugins.FLIRCP.storage.RAMstore;
 import plugins.FLIRCP.storage.RAMstore.PlainTextMessage;
 import plugins.FLIRCP.storage.RAMstore.channel;
 
-public class Worker extends Thread {
+public class Worker extends Thread  {
 	private RAMstore mStorage;
 	private FreenetMessageParser mFreenetMessageParser;
 	private HighLevelSimpleClient mInserter;
@@ -34,6 +35,7 @@ public class Worker extends Thread {
 	private USK_IdentityFetcher mIdentityFetcher_usk;
 	private USK_MessageFetcher mMessageFetcher_usk;
 	private float processingTime = 0;
+	private long announceEdition = 0;
 	private volatile boolean isRunning;
 	
 	public void terminate() {
@@ -48,7 +50,7 @@ public class Worker extends Thread {
 	public Worker(PluginRespirator pr, RAMstore Storage) {
 		mStorage = Storage;
 		this.setName("flircp.worker");
-		// FIXME: use pointer for worker and assign Fetchers and parsers in new instances from the worker pointer
+		// FIXME: use pointer for worker and assign Fetchers and Parser in new instances from the worker pointer
 		mAsyncAnnounceFetcher = new Async_AnnounceFetcher(Storage, pr.getNode().clientCore.makeClient((short) 1, false, true));
 		mIdentityFetcher_usk = new USK_IdentityFetcher(pr, Storage);
 		mMessageFetcher_usk = new USK_MessageFetcher(Storage, pr);
@@ -90,6 +92,7 @@ public class Worker extends Thread {
 			return false;
 		}
 		mQueue.addLast(message);
+		mStorage.userMap.get(mStorage.config.requestKey).lastMessageTime = new Date().getTime();
 		//System.err.println("[Worker]::insertMessage() added message \"" + message + "\" type \"" + message.ident + "\" to insert queue.");
 		return true;
 	}
@@ -98,24 +101,24 @@ public class Worker extends Thread {
 	public void run() {
 		// count tcp packets. if its odd multiply with 3, add 1. if its even divide it by two. why? because we can.
 		isRunning = true;
-		long announceEdition = 0;
 		PlainTextMessage currentJob;
 		long now = new Date().getTime();
-		long lastAnnounceInsert = now - 60 * 60 * 1000 - 1;
-		long lastIdentityInsert = now - 10 * 60 * 1000 - 1;
+		long lastAnnounceInsert = now - 6 * 60 * 60 * 1000 - 1;
+		long lastIdentityInsert = now - 60 * 60 * 1000 - 1;
 		long lastKeepAliveInsert = now - 15 * 60 * 1000 + 60 * 1000;
 		while(!isInterrupted() && isRunning) {
 			if(!mStorage.getCurrentDateString().equals(mStorage.getCurrentUtcDate())) {
 				mStorage.setCurrentDateString(mStorage.getCurrentUtcDate());
 				mStorage.setAllEditionsToZero(mIdentityFetcher_usk, mMessageFetcher_usk);
+				announceEdition = 0;
 			}
 			mStorage.checkUserActivity();
 			now = new Date().getTime();
-			if(!mStorage.config.firstStart && now - lastAnnounceInsert > 60 * 60 * 1000) {
+			if(!mStorage.config.firstStart && now - lastAnnounceInsert > 6 * 60 * 60 * 1000) {
 				insertMessage(mStorage.new PlainTextMessage("announce", mStorage.config.requestKey, "", "", 0, 0));
 				lastAnnounceInsert = now;
 			}
-			if(!mStorage.config.firstStart && now - lastIdentityInsert > 10 * 60 * 1000) {
+			if(!mStorage.config.firstStart && now - lastIdentityInsert > 60 * 60 * 1000) {
 				String message;
 				if(mStorage.getMessageEditionHint(mStorage.config.requestKey) < 0) {
 					message = "lastmessageindex=0\n";
@@ -123,7 +126,8 @@ public class Worker extends Thread {
 					message = "lastmessageindex=" + mStorage.getMessageEditionHint(mStorage.config.requestKey) + "\n";
 				}
 				message += "name=" + mStorage.config.nick + "\n";
-				message += "rsapublickey=" + mStorage.getRSA(mStorage.config.requestKey);
+				message += "rsapublickey=" + mStorage.getRSA(mStorage.config.requestKey) + "\n";
+				message += "\n";
 				insertMessage(mStorage.new PlainTextMessage("identity", message, "", "", 0, 0));
 				lastIdentityInsert = now;
 			}
@@ -132,15 +136,21 @@ public class Worker extends Thread {
 					SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 					sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
 					String message = "channels=";
+					String topics = "";
 					for(channel chan : mStorage.channelList) {
 						message += chan.name + " ";
+						if(!chan.topic.equals("")) {
+							topics += "topic." + chan.name.replace("=", ":") + "=" + chan.topic + "\n";
+						}
 					}
 					if(message.endsWith(" ")) {
 						message = message.substring(0, message.length() - 1);
 					}
 					message +=  "\n";
 					message += "sentdate=" + sdf.format(new Date().getTime()) + "\n";
-					message += "type=keepalive";
+					message += "type=keepalive\n";
+					message += topics;
+					message += "\n";
 					insertMessage(mStorage.new PlainTextMessage("message", message, "", "", 0, 0));
 					lastKeepAliveInsert = now;
 				}
@@ -150,7 +160,7 @@ public class Worker extends Thread {
 				// nothing in queue
 				try {
 					//System.err.println("Threadworker has nothing to do. sleeping for 1 sec.");
-					sleep(50);
+					sleep(75);
 				} catch (InterruptedException e) {
 					//System.err.println("[Worker] sleep interrupted");
 				}				
@@ -181,17 +191,20 @@ public class Worker extends Thread {
 					mTmpOutputStream.close();
 					mTmpBucket.setReadOnly();
 					mTmpInsertBlock = new InsertBlock(mTmpBucket, null, new FreenetURI(insertKey));
+					InsertContext mInsertContext = mInserter.getInsertContext(true);
+					mInsertContext.maxInsertRetries = -1;
+					//mInserter.insert(mTmpInsertBlock, false, null, false, mInsertContext, this, (short) 1);
 					messageLink = mInserter.insert(mTmpInsertBlock, false, null);
-					 if(currentJob.ident.equals("announce")) {
+					//System.err.println("[flircp] inserted message: " + messageLink.toString());
+					// FIXME: do we need the .free() later again if we fail and never reach the next statement?
+					mTmpBucket.free();
+					if(currentJob.ident.equals("announce")) {
 						announceEdition += 1;
-					} else if(currentJob.ident.equals("identity")) {
+					} else if(currentJob.ident.equals("identity")){
 						mStorage.setIdentEdition(mStorage.config.requestKey, mStorage.getIdentEdition(mStorage.config.requestKey) +1);
 					} else if(currentJob.ident.equals("message")) {
 						mStorage.setMessageEditionHint(mStorage.config.requestKey, mStorage.getMessageEditionHint(mStorage.config.requestKey) +1);
 					}
-					System.err.println("[flircp] inserted message: " + messageLink.toString());
-					// FIXME: do we need the .free() later again if we fail and never reach the next statement?
-					mTmpBucket.free();
 				} catch (MalformedURLException e) {
 					System.err.println("[Worker]::run() MalformedURLException while inserting temporary bucket into message keyspace. " + e.getMessage());
 				} catch (IOException e) {
@@ -228,11 +241,12 @@ public class Worker extends Thread {
 						System.err.println("[Worker]::run() InsertException while inserting message. " + e.getMessage() + ". errorNr: " + e.getMode());
 					}
 				}
-				if(processingTime != 0) {
-					processingTime = (processingTime + new Date().getTime() - now) / 2;
-				} else {
-					processingTime = new Date().getTime() - now;
-				}
+//				if(processingTime != Float.parseFloat("0")) {
+//					processingTime = (processingTime + new Date().getTime() - now) / 2;
+//				} else {
+//					processingTime = new Date().getTime() - now;
+//				}
+				processingTime = new Date().getTime() - now;
 			}
 		}
 	}
