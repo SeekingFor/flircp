@@ -58,8 +58,22 @@ public class Async_AnnounceFetcher implements ClientGetCallback, RequestClient {
 			e.printStackTrace();
 		}
 	}
+	private void restartRequest(final FreenetURI uri) {
+		Thread delayed = new Thread() {
+			@Override
+			public void run() {
+				try {
+					sleep(1000);
+					addRequest(uri);
+				} catch (InterruptedException e) {
+					
+				}
+			}
+		};
+		delayed.start();
+	}
 	
-	public void addRequest(FreenetURI uri) {
+	private void addRequest(FreenetURI uri) {
 		if(isRunning) {
 			FetchContext mFetchContext = mFetcher.getFetchContext();
 			mFetchContext.allowSplitfiles = true;		// FIXME: disable as soon as its fixed!
@@ -125,7 +139,7 @@ public class Async_AnnounceFetcher implements ClientGetCallback, RequestClient {
 		case FetchException.RECENTLY_FAILED:
 			// pretty normal for polling.. just add the request again
 			if(state.getURI().toString().contains(mStorage.getCurrentDateString())) {
-				addRequest(state.getURI());
+				restartRequest(state.getURI());
 			} else {
 				startRequestForNewEdition();
 			}
@@ -133,21 +147,21 @@ public class Async_AnnounceFetcher implements ClientGetCallback, RequestClient {
 		case FetchException.DATA_NOT_FOUND:
 			// pretty normal for polling.. just add the request again
 			if(state.getURI().toString().contains(mStorage.getCurrentDateString())) {
-				addRequest(state.getURI());
+				restartRequest(state.getURI());
 			} else {
 				startRequestForNewEdition();
 			}
 			break;
 		case FetchException.ALL_DATA_NOT_FOUND:
 			// should not possible while fetching KSKs without following redirects. ?
-			startRequestForNewEdition();
 			System.err.println("[Async_AnnounceFetcher] ALL_DATA_NOT_FOUND. you should not see me. ignoring this announce. " + e.getMessage() + " " + state.getURI().toString());
+			startRequestForNewEdition();
 			break;
 		case FetchException.ROUTE_NOT_FOUND:
 			// if hit it we are trying to fetch something but the node does not have a proper connection.
 			// just add the request again
 			if(state.getURI().toString().contains(mStorage.getCurrentDateString())) {
-				addRequest(state.getURI());
+				restartRequest(state.getURI());
 			} else {
 				startRequestForNewEdition();
 			}
@@ -155,7 +169,7 @@ public class Async_AnnounceFetcher implements ClientGetCallback, RequestClient {
 		case FetchException.REJECTED_OVERLOAD:
 			// just add the request again
 			if(state.getURI().toString().contains(mStorage.getCurrentDateString())) {
-				addRequest(state.getURI());
+				restartRequest(state.getURI());
 			} else {
 				startRequestForNewEdition();
 			}

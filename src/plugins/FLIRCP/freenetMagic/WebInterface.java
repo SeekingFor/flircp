@@ -17,8 +17,8 @@ import plugins.FLIRCP.Worker;
 import plugins.FLIRCP.freenetMagic.identicon.Identicon;
 import plugins.FLIRCP.storage.RAMstore;
 import plugins.FLIRCP.storage.RAMstore.PlainTextMessage;
-import plugins.FLIRCP.storage.RAMstore.channel;
-import plugins.FLIRCP.storage.RAMstore.users;
+import plugins.FLIRCP.storage.RAMstore.Channel;
+import plugins.FLIRCP.storage.RAMstore.User;
 import freenet.clients.http.PageNode;
 import freenet.clients.http.RedirectException;
 import freenet.clients.http.Toadlet;
@@ -85,8 +85,14 @@ public class WebInterface extends Toadlet {
 				mPageNode = ctx.getPageMaker().getPageNode("Hello stranger. Welcome to flircp", true, ctx);
 				mPageNode = createConfig(mPageNode, parseWelcomeMessage(mStorage.welcomeText));
 			} else {
-				mPageNode = ctx.getPageMaker().getPageNode("flircp #test", true, ctx);
-				mPageNode = createChannelWindow(mPageNode, "#test");
+				String channel = "#test";
+				if(!mStorage.config.autojoinChannel
+						&& !mStorage.config.joinedChannels.contains(channel)
+						&& mStorage.config.joinedChannels.size() > 0) {
+					channel =  mStorage.config.joinedChannels.get(0);
+				}
+				mPageNode = ctx.getPageMaker().getPageNode("flircp " + channel, true, ctx);
+				mPageNode = createChannelWindow(mPageNode, channel);
 			}
 			writeHTMLReply(ctx, 200, "OK", mPageNode.outer.generate());
 		} else if(requestedPath.equals("options")) {
@@ -117,22 +123,44 @@ public class WebInterface extends Toadlet {
 		} else if(requestedPath.equals("receiver")) {
 			writeHTMLReply(ctx, 200, "OK", handleReceivedInput(req,ctx).outer.generate());
 		} else if(requestedPath.startsWith("changeToChannel?channel=")) {
-			String channel = requestedPath.split("=")[1];
+			String channel = "#" + requestedPath.split("=")[1];
 			if(mStorage.config.firstStart) {
 				mPageNode = ctx.getPageMaker().getPageNode("Hello stranger. Welcome to flircp", true, ctx);
 				mPageNode = createConfig(mPageNode, parseWelcomeMessage(mStorage.welcomeText));
 			} else {
-				mPageNode = ctx.getPageMaker().getPageNode("flircp #" + channel, true, ctx);
-				mPageNode = createChannelWindow(mPageNode, "#" + channel);
+				if(!mStorage.config.autojoinChannel && !mStorage.config.joinedChannels.contains(channel)) {
+					mStorage.config.joinedChannels.add(channel);
+				}
+				mPageNode = ctx.getPageMaker().getPageNode("flircp " + channel, true, ctx);
+				mPageNode = createChannelWindow(mPageNode, channel);
+			}
+			writeHTMLReply(ctx, 200, "OK", mPageNode.outer.generate());
+		} else if(requestedPath.startsWith("part?channel=")) {
+			String channel = "#" + requestedPath.split("=")[1];
+			if(mStorage.config.firstStart) {
+				mPageNode = ctx.getPageMaker().getPageNode("Hello stranger. Welcome to flircp", true, ctx);
+				mPageNode = createConfig(mPageNode, parseWelcomeMessage(mStorage.welcomeText));
+			} else {
+				if(!mStorage.config.autojoinChannel && mStorage.config.joinedChannels.contains(channel)) {
+					mStorage.config.joinedChannels.remove(channel);
+				}
+				if(mStorage.config.joinedChannels.size() > 0) {
+					channel = mStorage.config.joinedChannels.get(0);
+				} else {
+					channel = "#test";
+				}
+				mPageNode = ctx.getPageMaker().getPageNode("flircp " + channel, true, ctx);
+				mPageNode = createChannelWindow(mPageNode, channel);
 			}
 			writeHTMLReply(ctx, 200, "OK", mPageNode.outer.generate());
 		} else if(requestedPath.startsWith("show?channel=")) {
-			writeHTMLReply(ctx, 200, "OK", createIframeContent("#"+requestedPath.split("=")[1]));
+			writeHTMLReply(ctx, 200, "OK", createIframeContent("#"+requestedPath.split("=")[1].replace("#lastLine", "")));
 		} else if(requestedPath.startsWith("profile?ident=")) {
 			mPageNode = ctx.getPageMaker().getPageNode("flircp profile", true, ctx);
 			mPageNode = createProfilePage(mPageNode, requestedPath.split("=")[1]);
 			writeHTMLReply(ctx, 200, "OK", mPageNode.outer.generate());
 		} else if(requestedPath.startsWith("sendMessage?channel=")) {
+			// TODO: check for autojoin channel and if channel available
 			String channel = "#" + requestedPath.split("=")[1];
 			String message = req.getPartAsStringFailsafe("messageinput", 512);
 			handleWriteMessage(channel, message);
@@ -144,12 +172,53 @@ public class WebInterface extends Toadlet {
 		}
 	}
 	private String basicHTMLencode(String input) {
+		//& → &amp;
 		//< → &lt;
 		//> → &gt;
 		//' → &#39;
 		//" → &quot;
-		//& → &amp;
-		return input.replace("<", "&lt;").replace(">", "&gt;").replace("'", "&#39;").replace("\"", "&quot;").replace("&", "&amp;");
+		//\n→ <br />
+		input = input.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("'", "&#39;").replace("\"", "&quot;").replace("\n", "<br />");
+		Boolean bOpened = false;
+		Boolean iOpened = false;
+		Boolean uOpened = false;
+		StringBuilder builder = new StringBuilder();
+		for(char character : input.toCharArray()) {
+			if(character == 0x02) {
+				// bold
+				if(!bOpened) {
+					builder.append("<b>");
+					bOpened = true;
+				} else {
+					builder.append("</b>");
+					bOpened = false;
+				}
+			} else if(character == 0x1D) {
+				// italics
+				if(!iOpened) {
+					builder.append("<i>");
+					iOpened = true;
+				} else {
+					builder.append("</i>");
+					iOpened = false;
+				}
+			} else if(character == 0x1F) {
+				// underline
+				if(!uOpened) {
+					builder.append("<u>");
+					uOpened = true;
+				} else {
+					builder.append("</u>");
+					uOpened = false;
+				}
+			} else {
+				builder.append(character);
+			}
+		}
+		if(bOpened) { builder.append("</b>"); }
+		if(iOpened) { builder.append("</i>"); }
+		if(uOpened) { builder.append("</u>"); }
+		return builder.toString();
 	}
 	private String addSpaces(String input) {
 		// FIXME: add config option for max nick length. RFC?
@@ -176,6 +245,7 @@ public class WebInterface extends Toadlet {
 	}
 	private HTMLNode parseWelcomeMessage(String message) {
 		// TODO: use freenets html parser instead?
+		// TODO: use own parser basicHTMLencode() instead?
 		HTMLNode ownContentNode = new HTMLNode("div");
 		ownContentNode.addAttribute("style", "margin:auto; width:55em; word-wrap: break-word;");
 		String buffer;
@@ -228,9 +298,12 @@ public class WebInterface extends Toadlet {
 		//
 		//ping
 		// FIXME: use substring instead of replace
-		if(message.toLowerCase().startsWith("/whois ")) {
+		if(message.toLowerCase().startsWith("/whois")) {
+			if(message.toLowerCase().trim().equals("/whois")) {
+				message = message + " ";
+			}
 			message = message.replace("/whois ", "").replace("/WHOIS ", "");
-			mStorage.getChannel(channel).messages.add(mStorage.new PlainTextMessage(mStorage.config.requestKey, "\n" + mStorage.getWhoIs(message), "*", channel, new Date().getTime(), mStorage.getChannel(channel).lastMessageIndex));
+			mStorage.getChannel(channel).messages.add(mStorage.new PlainTextMessage(mStorage.config.requestKey, "[flircp] WHOIS " + message + "\n" + mStorage.getWhoIs(message), "*", channel, new Date().getTime(), mStorage.getChannel(channel).lastMessageIndex));
 		} else if(message.toLowerCase().startsWith("/topic ")) {
 			message = message.replace("/topic ", "").replace("/TOPIC ", "");
 		} else if(message.toLowerCase().startsWith("/help")) {
@@ -240,21 +313,23 @@ public class WebInterface extends Toadlet {
 			}
 			if(message.equals("")) {
 				//message = "flircp commands:\n- /me [message]\twrites messages as third person\n- /whois [nick]\tshows public key, connected channels and time since last message\n- /topic [newTopic]\tchanges the topic\n- /help [command]\tshows help for [command] or this text if no command given- /version\tshows version of flircp";
-				message = "\n";
-				message += "flircp commands:\n";
-				message += "- /me [message]\t\twrites messages as third person\n";
-				message += "- /whois [nick]\t\tshows public key, connected channels and time since last message\n";
+				message = "[flircp] commands:\n";
+				message += "/me [message] writes messages as third person\n";
+				message += "/whois [nick] shows public key, connected channels and time since last message\n";
 				//message += "- /topic [newTopic]\tchanges the topic to newTopic\n";
-				message += "- /version\t\tshows version of flircp";
+				message += "/version shows version of flircp";
 				mStorage.getChannel(channel).messages.add(mStorage.new PlainTextMessage(mStorage.config.requestKey, message, "*", channel, new Date().getTime(), mStorage.getChannel(channel).lastMessageIndex));
 			}
 		} else if(message.toLowerCase().startsWith("/version")) {
-			message = "\n[version] current flircp version: " + mStorage.config.version_major + "." + mStorage.config.version_minor + "." + mStorage.config.version_debug;
+			message = "[flircp] current flircp version: " + mStorage.config.version_major + "." + mStorage.config.version_minor + "." + mStorage.config.version_debug;
 			mStorage.getChannel(channel).messages.add(mStorage.new PlainTextMessage(mStorage.config.requestKey, message, "*", channel, new Date().getTime(), mStorage.getChannel(channel).lastMessageIndex));
 		} else if(message.length() > 0) {
 			if(message.toLowerCase().startsWith("/me")) {
 				message = (char) 1 + "ACTION" + message.substring(3, message.length()) + (char) 1;
 			}
+			message = message.replace("[b]", "" + (char) 0x02).replace("[/b]", "" + (char) 0x02);
+			message = message.replace("[i]", "" + (char) 0x1D).replace("[/i]", "" + (char) 0x1D);
+			message = message.replace("[u]", "" + (char) 0x1F).replace("[/u]", "" + (char) 0x1F);
 			SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 			sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
 			String out = "channel=" + channel + "\n";
@@ -274,41 +349,72 @@ public class WebInterface extends Toadlet {
 	private String createIframeContent(String channel) {
 		String iFrameHTML = "<html>\n";
 		iFrameHTML += "<head>\n";
-		iFrameHTML += "<meta http-equiv='refresh' content='" + mStorage.config.iFrameRefreshInverval + "'>\n";
+		iFrameHTML += "<meta http-equiv='refresh' content='" + mStorage.config.iFrameRefreshInverval + ";url=show?channel=" + channel.replace("#", "") + "#lastLine'>\n";
 		iFrameHTML += "</head>\n";
 		iFrameHTML += "<body>\n";
-		if(mStorage.getChannel(channel) != null) {
+		if(mStorage.getChannel(channel) != null
+				&& (mStorage.config.autojoinChannel
+					|| (!mStorage.config.autojoinChannel && mStorage.config.joinedChannels.contains(channel))
+				)
+			) {
 			iFrameHTML += "<form action='setValueFromIFrame' method='POST'>\n";
 			iFrameHTML += "<table border='0' cellspacing='0' cellpadding='0' height='100%' width='100%'>\n";
 			iFrameHTML += "<tr>\n";
 			iFrameHTML += "<td valign='top'>\n";
-			//iFrameHTML += "<input type='text' name='topic' size='" + mStorage.config.topiclineWidth + "' value='" + mStorage.getChannel(channel).topic.replace("'", "´").replace("\"","´") + "' />\n";
-			//iFrameHTML += "<textarea cols='" + mStorage.config.textareaWidth + "' rows='" + mStorage.config.textareaHeight + "' readonly='readonly'>\n";
 			iFrameHTML += "<input type='text' name='topic' value='" + mStorage.getChannel(channel).topic.replace("'", "´").replace("\"","´") + "' style='width: 100%;' />\n";
-			iFrameHTML += "<textarea style='height: 100%; width: 100%;' readonly='readonly'>\n";
+//			iFrameHTML += "<textarea style='height: 100%; width: 100%;' readonly='readonly' id='channelwindow'>\n";
+			iFrameHTML += "<div style='height: " + (mStorage.config.iFrameHeight - 50) + "px; width: 99.7%; overflow: scroll; overflow-x: hidden; padding: 1px; border: 1px solid #666;'>\n";
+			iFrameHTML += "<table cellspaing='0' cellpadding='0' width='100%'>\n";
 			int messageIndex = 0;
 			SimpleDateFormat sdf = new SimpleDateFormat("z HH:mm:ss");
 			sdf.setTimeZone(TimeZone.getTimeZone(mStorage.config.timeZone));
 			// ugly but nesessary as we need a copy of the data not a reference. reason: concurrent modification exceptions.
-			for(PlainTextMessage message : mStorage.getChannel(channel).messages.toArray(new PlainTextMessage [mStorage.getChannel(channel).messages.size()])) {
-				// FIXME: do better security checks to permit breaking out of the textarea
-				if(!message.nickname.equals("*")) {
-					iFrameHTML +=  sdf.format(message.timeStamp) + "\t" + addSpaces("<" + message.nickname.replace("/textarea","") + ">") + "\t" + message.message.replace("/textarea","") + "\n";
+			PlainTextMessage[] channelArray = mStorage.getChannel(channel).messages.toArray(new PlainTextMessage [mStorage.getChannel(channel).messages.size()]);
+			String newContent = "";
+			for(PlainTextMessage message : channelArray) {
+				iFrameHTML += newContent;
+				if(!message.message.toLowerCase().contains(mStorage.config.nick.toLowerCase())) {
+					if(!message.nickname.equals("*")) {
+						newContent = "<tr><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'>" + sdf.format(message.timeStamp) + "</td><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;' align='right'>&nbsp;&lt;" + basicHTMLencode(message.nickname) + "&gt;&nbsp;" + "</td><td valign='top' width='100%' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'>" + basicHTMLencode(message.message) + "</td></tr>\n";
+//						iFrameHTML +=  sdf.format(message.timeStamp) + "\t" + addSpaces("<" + message.nickname.replace("/textarea","") + ">") + "\t" + message.message.replace("/textarea","") + "\n";
+					} else {
+						newContent = "<tr><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'>" + sdf.format(message.timeStamp) + "</td><td valign='top' nowrap='nowrap' align='right' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'>&nbsp;" + message.nickname + "&nbsp;" + "</td><td valign='top' width='100%' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'>" + basicHTMLencode(message.message) + "</td></tr>\n";
+//						iFrameHTML += sdf.format(message.timeStamp) + "\t" + message.nickname + " " + message.message.replace("/textarea","") + "\n";
+					}
 				} else {
-					iFrameHTML += sdf.format(message.timeStamp) + "\t" + message.nickname + " " + message.message.replace("/textarea","") + "\n";
+					// highlight
+					if(!message.nickname.equals("*")) {
+						newContent = "<tr><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'>" + sdf.format(message.timeStamp) + "</td><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;' align='right'>&nbsp;&lt;" + basicHTMLencode(message.nickname) + "&gt;&nbsp;" + "</td><td valign='top' width='100%' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'><font color='red'>" + basicHTMLencode(message.message) + "</font></td></tr>\n";
+//						iFrameHTML +=  sdf.format(message.timeStamp) + "\t" + addSpaces("<" + message.nickname.replace("/textarea","") + ">") + "\t" + message.message.replace("/textarea","") + "\n";
+					} else {
+						newContent = "<tr><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'>" + sdf.format(message.timeStamp) + "</td><td valign='top' nowrap='nowrap' align='right' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'>&nbsp;" + message.nickname + "&nbsp;" + "</td><td valign='top' width='100%' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'><font color='red'>" + basicHTMLencode(message.message) + "</font></td></tr>\n";
+//						iFrameHTML += sdf.format(message.timeStamp) + "\t" + message.nickname + " " + message.message.replace("/textarea","") + "\n";
+					}
 				}
 				messageIndex = message.index;
 			}
+			if(newContent.length() > 0) {
+				iFrameHTML += newContent.replace("</td></tr>\n", "<a name='lastLine'></a></td></tr>\n");
+			}
 			mStorage.getChannel(channel).lastShowedIndex = messageIndex;
-			iFrameHTML += "</textarea>";
+			iFrameHTML += "</table>\n";
+			iFrameHTML += "</div>\n";
+//			iFrameHTML += "</textarea>";
 			iFrameHTML += "</td>\n";
 			iFrameHTML += "<td valign='top' width='" + (mStorage.config.userlistWidth + 2) + "px'>\n";
+			iFrameHTML += "<table height='100%' width='100%' cellpadding='0' cellspacing='0'>\n";
+			iFrameHTML += "<tr>\n";
+			iFrameHTML += "<td valign='top'>\n";
 			iFrameHTML += "<input type='submit' name='whois' value='whois'>\n";
 			iFrameHTML += "<input type='submit' name='pm' value='PM'>\n";
 			iFrameHTML += "<br />\n";
 			iFrameHTML += "<input type='submit' name='operator' value='Operator'>\n";
 			iFrameHTML += "<input type='submit' name='voice' value='Voice'>\n";
-			iFrameHTML += "<br />\n";
+			iFrameHTML += "</td>\n";
+			iFrameHTML += "</tr>\n";
+			iFrameHTML += "<tr>\n";
+			// FIXME: this is bad syntax and wrong, is it?
+			iFrameHTML += "<td height='100%'>\n";
 			//iFrameHTML += "<select multiple='multiple' style='width: " + mStorage.config.userlistWidth + "px; height: " + mStorage.config.userlistHeight + "px;'>\n";
 			iFrameHTML += "<select multiple='multiple' style='width: 100%; height: 100%;'>\n";
 			// TODO: add config option for first empty line 
@@ -321,9 +427,15 @@ public class WebInterface extends Toadlet {
 			iFrameHTML += "</td>\n";
 			iFrameHTML += "</tr>\n";
 			iFrameHTML += "</table>\n";
+			iFrameHTML += "</td>\n";
+			iFrameHTML += "</tr>\n";
+			iFrameHTML += "</table>\n";
 			iFrameHTML += "</form>\n";
+//			if(mStorage.config.enableJavaScriptToScrollDownToLatestMessage) {
+//				iFrameHTML += "<script>var textarea=document.getElementById('channelwindow'); textarea.scrollTop=textarea.scrollHeight;</script>";
+//			}
 		} else {
-			iFrameHTML += "channel " + channel + " not found.";
+			iFrameHTML += "channel " + channel + " not found. If you configured flircp to not join channels automatically you need to join a channel from the channel list at the statistic page.";
 		}
 		iFrameHTML += "</body>\n";
 		iFrameHTML += "</html>\n";
@@ -483,6 +595,35 @@ public class WebInterface extends Toadlet {
 			error = true;
 			errorMsg += "show join / parts must be either true or false.\n";
 		}
+		// js scroll down
+//		input = req.getPartAsStringFailsafe("useJsToScrollDown", 10);
+//		if(input.toLowerCase().equals("true")) {
+//			mStorage.config.enableJavaScriptToScrollDownToLatestMessage = true;
+//		} else if(input.toLowerCase().equals("false")) {
+//			mStorage.config.enableJavaScriptToScrollDownToLatestMessage = false;
+//		} else {
+//			error = true;
+//			errorMsg += "enable javascript to scroll down to latest message must be either true or false.\n";
+//		}
+		// autojoin channels
+		input = req.getPartAsStringFailsafe("autojoinChannels", 10);
+		if(input.toLowerCase().equals("true")) {
+			mStorage.config.autojoinChannel = true;
+		} else if(input.toLowerCase().equals("false")) {
+			mStorage.config.autojoinChannel = false;
+		} else {
+			error = true;
+			errorMsg += "autojoin channels must be either true or false.\n";
+		}
+		// iFrame font size
+		input = req.getPartAsStringFailsafe("iframeFontSize", 10);
+		try {
+			mStorage.config.iFrameFontSize = Integer.parseInt(input);
+		} catch (NumberFormatException e) {
+			error = true;
+			errorMsg += "wrong format for iFrame font size. must be an integer.\n";
+		}
+		
 		
 		// done
 		HTMLNode messageDiv = new HTMLNode("div").addChild("b");
@@ -502,6 +643,7 @@ public class WebInterface extends Toadlet {
 		}
 		return createConfig(mPageNode, messageDiv);
 	}
+	
 	private PageNode createRoot(HTTPRequest req, ToadletContext ctx) { 
 		PageNode mPageNode; 
 		if(mStorage.config.firstStart) {
@@ -509,8 +651,12 @@ public class WebInterface extends Toadlet {
 			return createConfig(mPageNode, parseWelcomeMessage(mStorage.welcomeText));
 		} else {
 			// FIXME: make it configurable which page to show here
-			mPageNode = ctx.getPageMaker().getPageNode("flircp #test", true, ctx);
-			createChannelWindow(mPageNode, "#test");
+			String channel = "#test";
+			if(!mStorage.config.autojoinChannel && !mStorage.config.joinedChannels.contains(channel) && mStorage.config.joinedChannels.size() > 0) {
+				channel =  mStorage.config.joinedChannels.get(0);
+			}
+			mPageNode = ctx.getPageMaker().getPageNode("flircp " + channel, true, ctx);
+			createChannelWindow(mPageNode, channel);
 			return mPageNode;
 		}
 	}
@@ -546,6 +692,7 @@ public class WebInterface extends Toadlet {
 		//table.addChild(addConfigTR("topicline width", "topiclineWidth", 4, Integer.toString(mStorage.config.topiclineWidth), "topicline width in chars"));
 		//table.addChild(addConfigTR("chatline width", "chatLineWidth", 4, Integer.toString(mStorage.config.chatLineWidth), "chatline width in chars"));
 		table.addChild(addConfigTR("iFrame height", "iframeHeight", 4, Integer.toString(mStorage.config.iFrameHeight), "iFrame height in px"));
+		table.addChild(addConfigTR("iFrame font size", "iframeFontSize", 4, Integer.toString(mStorage.config.iFrameFontSize), "iFrame font size in pt"));
 		//table.addChild(addConfigTR("iFrame width", "iframeWidth", 4, Integer.toString(mStorage.config.iFrameWidth), "iFrame width in px"));
 		table.addChild(addConfigTR("iFrame refresh interval", "iframeRefreshInverval", 4, Integer.toString(mStorage.config.iFrameRefreshInverval), "refresh interval in seconds"));
 		//table.addChild(addConfigTR("textarea height", "textareaHeight", 4, Integer.toString(mStorage.config.textareaHeight), "textarea height in rows"));
@@ -555,6 +702,8 @@ public class WebInterface extends Toadlet {
 		table.addChild(addConfigTR("timezone", "timezone", 10, mStorage.config.timeZone, "timezone used for the chat window. messages will use UTC."));
 		// TODO: add type to addConfigTR: text, check, select
 		table.addChild(addConfigTR("show joins / parts", "showJoinsParts", 6, Boolean.toString(mStorage.config.showJoinsParts), ""));
+//		table.addChild(addConfigTR("scroll down textarea", "useJsToScrollDown", 6, Boolean.toString(mStorage.config.enableJavaScriptToScrollDownToLatestMessage), "enable JavaScript to scroll down to the latest message"));
+		table.addChild(addConfigTR("autojoin discovered channels", "autojoinChannels", 6, Boolean.toString(mStorage.config.autojoinChannel), ""));
 		
 		HTMLNode input = new HTMLNode("input");
 		input.addAttribute("type", "submit");
@@ -594,25 +743,62 @@ public class WebInterface extends Toadlet {
 	private PageNode createChannelWindow(PageNode mPageNode, String channel) {
 		HTMLNode chanLink;
 		HTMLNode chanLinkFont;
-		for(channel chan : mStorage.channelList) {
-			mPageNode.content.addChild(new HTMLNode("span", " | "));
-			chanLinkFont = new HTMLNode("font", chan.name);
-			if(!chan.name.equals(channel)) {
-				chanLink = new HTMLNode("a");
-				chanLink.addAttribute("href", "changeToChannel?channel=" + basicHTMLencode(chan.name.replace("#","")));
-				if(chan.lastShowedIndex < chan.lastMessageIndex) {
-					chanLinkFont.addAttribute("color", "red");	
+		if(mStorage.config.autojoinChannel) {
+			for(Channel chan : mStorage.channelList) {
+				mPageNode.content.addChild(new HTMLNode("span", " | "));
+				chanLinkFont = new HTMLNode("font", chan.name);
+				if(!chan.name.equals(channel)) {
+					chanLink = new HTMLNode("a");
+					chanLink.addAttribute("href", "changeToChannel?channel=" + basicHTMLencode(chan.name.replace("#","")));
+					if(chan.lastShowedIndex < chan.lastMessageIndex) {
+						chanLinkFont.addAttribute("color", "red");	
+					} else {
+						chanLinkFont.addAttribute("color", "blue");
+					}
+					chanLink.addChild(chanLinkFont);
+					mPageNode.content.addChild(chanLink);
 				} else {
-					chanLinkFont.addAttribute("color", "blue");
+					chanLinkFont.addAttribute("color", "black");
+					mPageNode.content.addChild(chanLinkFont);
 				}
-				chanLink.addChild(chanLinkFont);
-				mPageNode.content.addChild(chanLink);
+			}
+			mPageNode.content.addChild(new HTMLNode("span", " |"));
+		} else {
+			if(mStorage.config.joinedChannels.size() > 0 ) {
+				Channel chan;
+				for(String channelName : mStorage.config.joinedChannels) {
+					chan = mStorage.getChannel(channelName);
+					mPageNode.content.addChild(new HTMLNode("span", " | "));
+					chanLinkFont = new HTMLNode("font", chan.name + " ");
+					if(!chan.name.equals(channel)) {
+						chanLink = new HTMLNode("a");
+						chanLink.addAttribute("href", "changeToChannel?channel=" + basicHTMLencode(chan.name.replace("#","")));
+						if(chan.lastShowedIndex < chan.lastMessageIndex) {
+							chanLinkFont.addAttribute("color", "red");	
+						} else {
+							chanLinkFont.addAttribute("color", "blue");
+						}
+						chanLink.addChild(chanLinkFont);
+						mPageNode.content.addChild(chanLink);
+					} else {
+						chanLinkFont.addAttribute("color", "black");
+						mPageNode.content.addChild(chanLinkFont);
+					}
+					chanLink = new HTMLNode("a", "x");
+					chanLink.addAttribute("href", "part?channel=" + basicHTMLencode(chan.name.replace("#","")));
+					mPageNode.content.addChild(new HTMLNode("span", "["));
+					mPageNode.content.addChild(chanLink);
+					mPageNode.content.addChild(new HTMLNode("span", "]"));
+				}
+				mPageNode.content.addChild(new HTMLNode("span", " |"));
 			} else {
-				chanLinkFont.addAttribute("color", "black");
-				mPageNode.content.addChild(chanLinkFont);
+				mPageNode.content.addChild(new HTMLNode("span","You did not join any channel, please head over to the "));
+				HTMLNode aNode = new HTMLNode("a", "channel list");
+				aNode.addAttribute("href", "stats");
+				mPageNode.content.addChild(aNode);
+				mPageNode.content.addChild(new HTMLNode("span", "."));
 			}
 		}
-		mPageNode.content.addChild(new HTMLNode("span", " |"));
 		HTMLNode iframe = new HTMLNode("iframe");
 		//iframe.addAttribute("width", Integer.toString(mStorage.config.iFrameWidth));
 		iframe.addAttribute("height", Integer.toString(mStorage.config.iFrameHeight));
@@ -620,7 +806,7 @@ public class WebInterface extends Toadlet {
 		//iframe.addAttribute("height", "100%");
 		iframe.addAttribute("scrolling", "no");
 		iframe.addAttribute("name", "flircp_iframe");
-		iframe.addAttribute("src", "show?channel="+ channel.replace("#",""));
+		iframe.addAttribute("src", "show?channel="+ channel.replace("#","") + "#lastLine");
 		iframe.setContent("you need to activate frames to use flircp");
 		HTMLNode formMain = new HTMLNode("form");
 		formMain.addAttribute("action", "sendMessage?channel=" + channel.replace("#",""));
@@ -714,7 +900,7 @@ public class WebInterface extends Toadlet {
 		sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
 		HTMLNode tmpTrNode;
 		HTMLNode tmpTdNode;
-		users user;
+		User user;
 		// header
 		tmpTrNode = new HTMLNode("tr");
 		tmpTdNode = new HTMLNode("th");
@@ -828,7 +1014,7 @@ public class WebInterface extends Toadlet {
 		tmpTrNode.addChild(tmpTdNode);
 		table.addChild(tmpTrNode);
 		
-		for(channel chan : mStorage.channelList) {
+		for(Channel chan : mStorage.channelList) {
 			// values
 			tmpTrNode = new HTMLNode("tr");
 			tmpTdNode = new HTMLNode("td");

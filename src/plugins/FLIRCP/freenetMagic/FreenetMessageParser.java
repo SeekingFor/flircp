@@ -9,7 +9,7 @@ import java.util.HashMap;
 import freenet.keys.FreenetURI;
 
 import plugins.FLIRCP.storage.RAMstore;
-import plugins.FLIRCP.storage.RAMstore.channel;
+import plugins.FLIRCP.storage.RAMstore.Channel;
 
 public class FreenetMessageParser extends Thread {
 	private USK_IdentityFetcher mUSK_IdentityFetcher;
@@ -35,8 +35,9 @@ public class FreenetMessageParser extends Thread {
 		return processingTime / 1000;
 	}
 	
-	public void addMessage(String source, String ident, String content, String freenetURI) {
+	public synchronized void addMessage(String source, String ident, String content, String freenetURI) {
 		mMessageQueue.addFirst(new FreenetMessage(source, ident, content, freenetURI));
+		this.notify();
 	}
 	
 	public void terminate() {
@@ -44,49 +45,53 @@ public class FreenetMessageParser extends Thread {
 		isRunning = false;
 		this.interrupt();
 	}
-
+	
+	private void parseMessage(FreenetMessage message) {
+		long now = new Date().getTime();
+		if("announce".equals(message.source)) {
+			if(parseAnnounceMessage(message)) {
+				mStorage.announce_valid += 1;
+			} else {
+				mStorage.announce_ddos += 1;
+			}
+		} else if("identity".equals(message.source)) {
+			if(parseIdentMessage(message)) {
+				mStorage.identity_valid += 1;
+			} else {
+				mStorage.identity_ddos +=1;
+				mStorage.userMap.get(message.ident).identity_ddos += 1;
+			}
+		} else if("message".equals(message.source)) {
+			if(parseMessageMessage(message)) {
+				mStorage.message_valid += 1;
+			} else {
+				mStorage.message_ddos += 1;
+				mStorage.userMap.get(message.ident).message_ddos += 1;
+			}
+		} else {
+			System.err.println("[FreenetMessageParser] not supported source: " + message.source);
+		}
+//		if(processingTime != Float.parseFloat("0")) {
+//			processingTime = (processingTime + new Date().getTime() - now) / 2;
+//		} else {
+//			processingTime = new Date().getTime() - now;
+//		}
+		// TODO: fix average job time calculation
+		processingTime = new Date().getTime() - now;
+	}
+	
 	@Override
 	public void run() {
 		isRunning = true;
-		FreenetMessage message;
-		long now;
 		while(!isInterrupted() && isRunning) {
 			try {
-				message = mMessageQueue.pollLast();
-				if(message != null) {
-					now = new Date().getTime();
-					if("announce".equals(message.source)) {
-						if(parseAnnounceMessage(message)) {
-							mStorage.announce_valid += 1;
-						} else {
-							mStorage.announce_ddos += 1;
-						}
-					} else if("identity".equals(message.source)) {
-						if(parseIdentMessage(message)) {
-							mStorage.identity_valid += 1;
-						} else {
-							mStorage.identity_ddos +=1;
-							mStorage.userMap.get(message.ident).identity_ddos += 1;
-						}
-					} else if("message".equals(message.source)) {
-						if(parseMessageMessage(message)) {
-							mStorage.message_valid += 1;
-						} else {
-							mStorage.message_ddos += 1;
-							mStorage.userMap.get(message.ident).message_ddos += 1;
-						}
+				synchronized (this) {
+					if(mMessageQueue.size() > 0) {
+						parseMessage(mMessageQueue.pollLast());
 					} else {
-						System.err.println("[FreenetMessageParser] not supported source: " + message.source);
+						this.wait();						
 					}
-//					if(processingTime != Float.parseFloat("0")) {
-//						processingTime = (processingTime + new Date().getTime() - now) / 2;
-//					} else {
-//						processingTime = new Date().getTime() - now;
-//					}
-					// TODO: fix average job time calculation
-					processingTime = new Date().getTime() - now;
 				}
-				sleep(75);
 			} catch (InterruptedException e) {
 				//System.err.println("[FreenetMessageParser]::run() InterruptedExcpetion");
 			}
@@ -132,7 +137,7 @@ public class FreenetMessageParser extends Thread {
 					}
 					if(!mStorage.getOriginalNick(message.ident).equals("")) {
 						System.err.println("[IdentityFetcher] got new nick for ident " + message.ident);
-						channel chan;
+						Channel chan;
 						for(String channel : mStorage.userMap.get(message.ident).channels) {
 							if(channel != null && !channel.equals("")) {
 								chan = mStorage.getChannel(channel);
@@ -141,11 +146,10 @@ public class FreenetMessageParser extends Thread {
 							}
 						}
 					}
-					//System.err.println("[FreenetMessageParser] setting new nick: " + nick + " new original nick: " + originalNick);
 					mStorage.setNick(message.ident, nick, originalNick);
 				}
 			} else {
-				System.err.println("[FreenetMessageParser] found empty nick for " + message.ident);
+				//System.err.println("[FreenetMessageParser] found empty nick for " + message.ident);
 			}
 		} else {
 			failed = true;
@@ -239,7 +243,9 @@ public class FreenetMessageParser extends Thread {
 							// TODO: add config option for new topic = new message
 							mStorage.getChannel(channel).lastMessageIndex += 1;
 							mStorage.getChannel(channel).messages.add(mStorage.new PlainTextMessage(message.ident, mStorage.getNick(message.ident) + " changed topic to: " + topic, "*", channel, new Date().getTime(), mStorage.getChannel(channel).lastMessageIndex));
-							if(!topic.equals("") && !topic.equals(mStorage.getChannel(channel).topic)) {
+							if(!topic.equals("")
+									&& !topic.equals(mStorage.getChannel(channel).topic)
+									&& mStorage.getChannel(channel).topic.equals("")) {
 								System.err.println("got new topic from keepalive for " + channel + ": " + topic);
 								mStorage.setTopic(channel, topic);
 							}

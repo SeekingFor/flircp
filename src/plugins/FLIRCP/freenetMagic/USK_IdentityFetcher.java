@@ -185,11 +185,11 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 		if(uri.getEdition() == 0) {
 			// initial USK request, no subscription activated yet.
 			// simply restart the request
-			System.err.println("[USK_IdentityFetcher] " + reason + ". initial request. restarting request. " + uri.toString());
-			addRequest(uri);
+			//System.err.println("[USK_IdentityFetcher] " + reason + ". initial request. restarting request. " + uri.toString());
+			restartRequest(uri);
 		} else {
 			// backed up by subscription. we just wait for the next edition.
-			System.err.println("[USK_IdentityFetcher] " + reason + ". waiting for next edition from subscription. " + uri.toString());
+			//System.err.println("[USK_IdentityFetcher] " + reason + ". waiting for next edition from subscription. " + uri.toString());
 		}
 	}
 	
@@ -204,11 +204,7 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 		if(!mStorage.userMap.get(ident).identSubscriptionActive) {
 			// initial USK request, no subscription activated yet.
 			addSubscription(uri);
-			if(reason.equals("TOO_MUCH_RECURSION")) {
-				//System.err.println("[USK_IdentityFetcher] " + reason + ". initial request. subscribing anyway. edition " + uri.getEdition());
-			} else {
-				System.err.println("[USK_IdentityFetcher] " + reason + ". initial request. subscribing anyway. " + uri.toString() + " " + message);
-			}
+			System.err.println("[USK_IdentityFetcher] " + reason + ". initial request. subscribing to edition " + uri.getEdition() + " anyway. " + message);
 		} else {
 			// backed up by subscription. we just wait for the next edition.
 			System.err.println("[USK_IdentityFetcher] " + reason + ". waiting for next edition from subscription. " + uri.toString() + " " + message);
@@ -285,9 +281,23 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 		}
 	}
 	
+	private void restartRequest(final FreenetURI uri) {
+		Thread delayed = new Thread() {
+			@Override
+			public void run() {
+				try {
+					sleep(1000);
+					addRequest(uri);
+				} catch (InterruptedException e) {
+					
+				}
+			}
+		};
+		delayed.start();
+	}
 	private void addRequest(FreenetURI uri) {
 		FetchContext mFetchContext = mRequestClient.getFetchContext();
-		mFetchContext.allowSplitfiles = false;
+		mFetchContext.allowSplitfiles = true;		// FIXME: change to false if this is fixed
 		mFetchContext.canWriteClientCache = true;
 		mFetchContext.dontEnterImplicitArchives = true; //?
 		mFetchContext.filterData = false; //?
@@ -305,7 +315,7 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 		//mFetchContext.maxNonSplitfileRetries = -1;
 		mFetchContext.maxNonSplitfileRetries = 2;
 		//mFetchContext.maxOutputLength = 1024 ?
-		mFetchContext.maxRecursionLevel = 0; //?
+		mFetchContext.maxRecursionLevel = 1; //?
 		mFetchContext.maxSplitfileBlockRetries = 0;
 		//mFetchContext.maxTempLength = ?
 		//final? mFetchContext.maxUSKRetries = -1; //?

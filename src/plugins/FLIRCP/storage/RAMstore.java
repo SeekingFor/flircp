@@ -13,8 +13,8 @@ import plugins.FLIRCP.freenetMagic.USK_IdentityFetcher;
 import plugins.FLIRCP.freenetMagic.USK_MessageFetcher;
 
 public class RAMstore {
-	public HashMap<String, users> userMap;
-	public List<channel> channelList;
+	public HashMap<String, User> userMap;
+	public List<Channel> channelList;
 	public List<String> knownIdents;
 	private String announceKey="";
 	private long announceEdition=-1;
@@ -35,9 +35,9 @@ public class RAMstore {
 	
 	
 	public RAMstore() {
-		this.userMap = new HashMap<String, RAMstore.users>();
+		this.userMap = new HashMap<String, RAMstore.User>();
 		this.knownIdents = new ArrayList<String>();
-		this.channelList = new ArrayList<RAMstore.channel>();
+		this.channelList = new ArrayList<RAMstore.Channel>();
 		this.sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
 		this.currentDateString = getCurrentUtcDate();
 		this.config = new Config();
@@ -52,7 +52,7 @@ public class RAMstore {
 		this.welcomeText += "If you want to use a IRC client instead this plugin you can check out the [a]Freenet Social Network Guide for FLIP[/a] written by JustusRanvier.\n\n";
 		this.welcomeText += "As this is the first time you start flircp please take the time to configure your settings.\n";
 		this.welcomeText += "Currently there is no permanent storage implemented, if you restart the plugin (or your Freenet node) all settings will be lost and you have to configure flircp again.\n\n";
-		this.welcomeText += "Your announcment to other users will be kind of slow in this version, next versions will improve this.";
+		this.welcomeText += "Your announcment to other users will be kind of slow in this version, next versions will improve this.\n";
 		this.welcomeText += "If you have any questions feel free to head over to #flircp.";
 	}
 	
@@ -64,13 +64,15 @@ public class RAMstore {
 		public String messageBase = "flip";
 		public int version_major = 0;
 		public int version_minor = 0;
-		public int version_debug = 2;
+		public int version_debug = 3;
 		// ident
 		public String nick = "flircp_testuser";
 		public String requestKey = "";
 		public String insertKey = "";
 		public String RSApublicKey = "";
 		public String RSAprivateKey = "";
+		public Boolean autojoinChannel = true;
+		public List<String> joinedChannels = new ArrayList<String>();
 		// web ui
 		public String timeZone = "UTC";
 		public int iFrameHeight = 610;
@@ -84,7 +86,9 @@ public class RAMstore {
 		public int showMessagesPerChannel=0;
 		public int maxMessageBufferSizePerChannel=1024;
 		public int chatLineWidth = 233;
-		public Boolean showJoinsParts = true;
+		public Boolean showJoinsParts = false;
+		public Boolean enableJavaScriptToScrollDownToLatestMessage = true;
+		public int iFrameFontSize = 10;
 		public Config() {
 			// TODO: load config from file / db / whatever
 		}
@@ -99,7 +103,7 @@ public class RAMstore {
 			config.requestKey = requestKey;
 		}
 	}
-	public class channel implements Comparable<channel>{
+	public class Channel implements Comparable<Channel>{
 		public String name;
 		public String topic;
 		public List<PlainTextMessage> messages;
@@ -107,7 +111,7 @@ public class RAMstore {
 		public int lastShowedIndex;
 		public int currentUserCount;
 		public long lastMessageActivity;
-		public channel(String channelName) {
+		public Channel(String channelName) {
 			this.name = channelName;
 			this.topic = "";
 			this.lastMessageIndex = -1;
@@ -117,7 +121,7 @@ public class RAMstore {
 			this.lastMessageActivity = 0;
 		}
 		@Override
-		public int compareTo(channel o) {
+		public int compareTo(Channel o) {
 			return this.name.compareTo(o.name);
 		}
 		
@@ -133,14 +137,14 @@ public class RAMstore {
 				channelName.replace("#", "").length() == channelName.length() - 1 &&
 				!channelName.equals("#")) {
 			Boolean found = false;
-			for(channel chan : channelList) {
+			for(Channel chan : channelList) {
 				if(chan != null && chan.name.equals(channelName)) {
 					found = true;
 					break;
 				}
 			}
 			if(!found) {
-				channelList.add(new channel(channelName));
+				channelList.add(new Channel(channelName));
 				Collections.sort(channelList);
 			}
 		} else {
@@ -148,8 +152,8 @@ public class RAMstore {
 		}
 		return true;
 	}
-	public channel getChannel(String channelName) {
-		for(channel channel : channelList) {
+	public Channel getChannel(String channelName) {
+		for(Channel channel : channelList) {
 			if(channel.name.equals(channelName)) {
 				return channel;
 			}
@@ -166,7 +170,7 @@ public class RAMstore {
 //			}
 //		}
 	}
-	public class users {
+	public class User {
 		// FIXME: change editions to long
 		// TODO: clean this up and remove unnecessary variables.
 		public String nick;
@@ -185,7 +189,7 @@ public class RAMstore {
 		public Boolean identSubscriptionActive;
 		public List<String> failedMessageRequests;
 		public long lastMessageTime;
-		public users() {
+		public User() {
 			this.nick = "";
 			this.originalNick = "";
 			this.RSA = "";
@@ -226,7 +230,7 @@ public class RAMstore {
 		addNewUser(requestKey, false);
 	}
 	public void addNewUser(String requestKey, Boolean ownUser) {
-		users newUser = new users();
+		User newUser = new User();
 		userMap.put(requestKey, newUser);
 		if(!ownUser) { knownIdents.add(requestKey); }
 	}
@@ -286,8 +290,8 @@ public class RAMstore {
 	// identity functions
 	// FIXME: clean this up, mixed with general functions like utc date and getMessageBase()
 	public void checkUserActivity() {
-		// 1000 ms * 60 seconds * 16 minutes
-		long datetimeToKick = new Date().getTime() - 16 * 60 * 1000;
+		// 1000 ms * 60 seconds * 17 minutes
+		long datetimeToKick = new Date().getTime() - 17 * 60 * 1000;
 		try {
 			for(String ident : knownIdents) {
 				if(userMap.get(ident).lastActivity < datetimeToKick && userMap.get(ident).channelCount > 0) {
@@ -319,7 +323,7 @@ public class RAMstore {
 					for(String channel : userMap.get(ident).channels) {
 						channels += channel + " ";
 					}
-					channels = channels.substring(0, channels.length() - 1);
+					if(channels.length() > 0) { channels = channels.substring(0, channels.length() - 1); }
 					return "[" + nickname + "]" + " Public key: " + ident + "\n[" + nickname + "]" + " channels: " + channels + "\n[" + nickname + "]" + " has been idle: " + ((new Date().getTime() - userMap.get(ident).lastMessageTime) / 1000) + " seconds" ;
 				}
 			}

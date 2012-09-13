@@ -23,7 +23,7 @@ import plugins.FLIRCP.freenetMagic.USK_IdentityFetcher;
 import plugins.FLIRCP.freenetMagic.USK_MessageFetcher;
 import plugins.FLIRCP.storage.RAMstore;
 import plugins.FLIRCP.storage.RAMstore.PlainTextMessage;
-import plugins.FLIRCP.storage.RAMstore.channel;
+import plugins.FLIRCP.storage.RAMstore.Channel;
 
 public class Worker extends Thread  {
 	private RAMstore mStorage;
@@ -105,15 +105,18 @@ public class Worker extends Thread  {
 		long now = new Date().getTime();
 		long lastAnnounceInsert = now - 6 * 60 * 60 * 1000 - 1;
 		long lastIdentityInsert = now - 60 * 60 * 1000 - 1;
-		long lastKeepAliveInsert = now - 15 * 60 * 1000 + 60 * 1000;
+		long lastKeepAliveInsert = now - 14 * 60 * 1000 + 60 * 1000;
 		while(!isInterrupted() && isRunning) {
+			now = new Date().getTime();
 			if(!mStorage.getCurrentDateString().equals(mStorage.getCurrentUtcDate())) {
 				mStorage.setCurrentDateString(mStorage.getCurrentUtcDate());
 				mStorage.setAllEditionsToZero(mIdentityFetcher_usk, mMessageFetcher_usk);
 				announceEdition = 0;
+				lastAnnounceInsert = now - 6 * 60 * 60 * 1000 - 1;
+				lastIdentityInsert = now - 60 * 60 * 1000 - 1;
+				lastKeepAliveInsert = now - 14 * 60 * 1000 -1;
 			}
 			mStorage.checkUserActivity();
-			now = new Date().getTime();
 			if(!mStorage.config.firstStart && now - lastAnnounceInsert > 6 * 60 * 60 * 1000) {
 				insertMessage(mStorage.new PlainTextMessage("announce", mStorage.config.requestKey, "", "", 0, 0));
 				lastAnnounceInsert = now;
@@ -131,16 +134,27 @@ public class Worker extends Thread  {
 				insertMessage(mStorage.new PlainTextMessage("identity", message, "", "", 0, 0));
 				lastIdentityInsert = now;
 			}
-			if(!mStorage.config.firstStart && now - lastKeepAliveInsert > 15 * 60 * 1000) {
+			if(!mStorage.config.firstStart && now - lastKeepAliveInsert > 14 * 60 * 1000) {
 				if(mStorage.channelList.size() > 0) {
 					SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 					sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
 					String message = "channels=";
 					String topics = "";
-					for(channel chan : mStorage.channelList) {
-						message += chan.name + " ";
-						if(!chan.topic.equals("")) {
-							topics += "topic." + chan.name.replace("=", ":") + "=" + chan.topic + "\n";
+					if(mStorage.config.autojoinChannel) {
+						for(Channel chan : mStorage.channelList) {
+							message += chan.name + " ";
+							if(!chan.topic.equals("")) {
+								topics += "topic." + chan.name.replace("=", ":") + "=" + chan.topic + "\n";
+							}
+						}
+					} else {
+						Channel chan;
+						for(String channelName : mStorage.config.joinedChannels) {
+							chan = mStorage.getChannel(channelName);
+							message += chan.name + " ";
+							if(!chan.topic.equals("")) {
+								topics += "topic." + chan.name.replace("=", ":") + "=" + chan.topic + "\n";
+							}
 						}
 					}
 					if(message.endsWith(" ")) {
@@ -149,7 +163,16 @@ public class Worker extends Thread  {
 					message +=  "\n";
 					message += "sentdate=" + sdf.format(new Date().getTime()) + "\n";
 					message += "type=keepalive\n";
-					message += topics;
+					if(message.length() + topics.length() + 1 < 1025) {
+						message += topics;
+					} else {
+						// TODO: add round robin
+						for(String line : topics.split("\n")) {
+							if(message.length() + line.length() + 2 < 1025) {
+								message += line + "\n";
+							}
+						}
+					}
 					message += "\n";
 					insertMessage(mStorage.new PlainTextMessage("message", message, "", "", 0, 0));
 					lastKeepAliveInsert = now;
@@ -160,7 +183,7 @@ public class Worker extends Thread  {
 				// nothing in queue
 				try {
 					//System.err.println("Threadworker has nothing to do. sleeping for 1 sec.");
-					sleep(75);
+					sleep(100);
 				} catch (InterruptedException e) {
 					//System.err.println("[Worker] sleep interrupted");
 				}				
@@ -227,16 +250,11 @@ public class Worker extends Thread  {
 							mStorage.setMessageEditionHint(mStorage.config.requestKey, mStorage.getMessageEditionHint(mStorage.config.requestKey) + 1);
 							System.err.println("[Worker]::run() COLLISION for message insert. wtf?");
 						}
-						// add the job to the queue again.
+						// add the job on top of the queue again.
 						mQueue.addFirst(currentJob);
 					} else if(e.getMode() == InsertException.REJECTED_OVERLOAD) {
 						// just add the job to the queue again.
 						mQueue.addFirst(currentJob);
-//						try {
-//							System.err.println("[Worker]::run() REJECTED_OVERLOAD. retrying.");
-//							//sleep(1000*5);
-//						} catch (InterruptedException e1) {
-//						}
 					} else {
 						System.err.println("[Worker]::run() InsertException while inserting message. " + e.getMessage() + ". errorNr: " + e.getMode());
 					}

@@ -112,7 +112,21 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 			resetSubcriptions();
 		}
 	}
-	
+
+	private void restartRequest(final FreenetURI uri) {
+		Thread delayed = new Thread() {
+			@Override
+			public void run() {
+				try {
+					sleep(1000);
+					addRequest(uri);
+				} catch (InterruptedException e) {
+					
+				}
+			}
+		};
+		delayed.start();
+	}
 	private void addRequest(FreenetURI uri) {
 		FetchContext mFetchContext = mFetcher.getFetchContext();
 		mFetchContext.allowSplitfiles = true;		// FIXME: disable as soon as its fixed!
@@ -133,7 +147,7 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 		//mFetchContext.maxNonSplitfileRetries = -1;
 		mFetchContext.maxNonSplitfileRetries = 2;
 		//mFetchContext.maxOutputLength = 1024 ?
-		mFetchContext.maxRecursionLevel = 0; //?
+		mFetchContext.maxRecursionLevel = 1; //?
 		mFetchContext.maxSplitfileBlockRetries = 0;
 		//mFetchContext.maxTempLength = ?
 		//final? mFetchContext.maxUSKRetries = -1; //?
@@ -180,20 +194,18 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 		// non fatal errors. we can simply restart the request
 		// FIXME: add hashmap for tracking retries per uri until maxRetries is hit. print error then.
 		concurrentFetchCount -= 1;
-		System.err.println("[USK_MessageFetcher] " + reason + ". restarting request. " + uri.toString());
-		addRequest(uri);
+		//System.err.println("[USK_MessageFetcher] " + reason + ". restarting request. " + uri.toString());
+		restartRequest(uri);
 	}
 	
 	private void checkInvalid(FreenetURI uri, String reason, String message) {
-		// fatal errors. can't fetch this request. subscribing to edition 0 or ignoring this edition.
+		// fatal errors. can't fetch this request. subscribing to current edition or ignoring this edition.
 		// FIXME: better stop fetching this identity?
-		// FIXME: edition > 0 will not necessary mean there is a subscription as the first USK 
-		// FIXME: requests is based on lastmessageindex from identity. evaluate. check subscription queue instead.
 		concurrentFetchCount -= 1;
-		if(uri.getEdition() == 0) {
+		if(uri.isUSK()) {
 			// initial USK request, no subscription activated yet.
-			// subscribe to edition 0
-			addSubscription(uri, 0);
+			// subscribe to current edition
+			addSubscription(uri, uri.getEdition());
 			System.err.println("[USK_MessageFetcher] " + reason + ". initial request. subscribing anyway. " + uri.toString() + " " + message);
 		} else {
 			// backed up by subscription. we wait for the next edition and print the error for manual analysis.
@@ -208,10 +220,11 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 		case FetchException.RECENTLY_FAILED:
 			// just silently refetch
 			concurrentFetchCount -= 1;
-			addRequest(state.getURI());
+			restartRequest(state.getURI());
 			break;
 		case FetchException.DATA_NOT_FOUND:
 			if(state.getURI().isUSK()) {
+				// initial USK request, no subscription active
 				checkRequestRestart(state.getURI(), "DATA_NOT_FOUND");
 				break;
 			}
@@ -222,7 +235,7 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 				mDNFtracker.put(state.getURI(), (short) (mDNFtracker.get(state.getURI()) + 1));
 			}
 			if(mDNFtracker.get(state.getURI()) < mStorage.config.maxMessageRetriesAfterDNF +1) {
-				addRequest(state.getURI());
+				restartRequest(state.getURI());
 			} else {
 				mDNFtracker.remove(state.getURI());
 				mStorage.userMap.get(ident).failedMessageRequests.add(state.getURI().toString());
@@ -266,7 +279,7 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 			// FIXME: wtf?
 			concurrentFetchCount -= 1;
 			if(state.getURI().isUSK()) {
-				//System.err.println("[USK_MessageFetcher] TOO_MUCH_RECURSION for initial USK. subscribung to current edition " + state.getURI().getEdition() + ".");
+				System.err.println("[USK_MessageFetcher] TOO_MUCH_RECURSION for initial USK. subscribing to current edition " + state.getURI().getEdition());
 				addSubscription(state.getURI(), state.getURI().getEdition());
 			} else {
 				System.err.println("[USK_MessageFetcher] TOO_MUCH_RECURSION for SSK. wtf? " + e.getMessage() + " " + state.getURI().toString());
@@ -277,7 +290,7 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 			if(e.newURI.toString().startsWith(state.getURI().toString().split("/")[0])) {
 				// this should work only for USK requests. we request USK only for the initial subscription so this should be save.
 				addRequest(e.newURI);
-				//System.err.println("[USK_MessageFetcher] got new edition. old edition was " + state.getURI().getEdition() + " new edition is " + e.newURI.getEdition());
+				//System.err.println("[USK_MessageFetcher] PERMANENT_REDIRECT for initial USK. got new edition. old edition was " + state.getURI().getEdition() + " new edition is " + e.newURI.getEdition() + " usk=" + state.getURI().toString());
 			} else {
 				mStorage.message_ddos +=1;
 				mStorage.userMap.get(ident).message_ddos += 1;
@@ -303,6 +316,7 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 			//System.err.println("[USK_MessageFetcher]::onSuccess key type = initial USK");
 			// only the initial request is a USK request. all requests issued by
 			// polling the USK for new editions use SSK. see below at onFoundEdition().
+			//System.err.println("[USK_MessageFetcher] onSuccess(). got content for " + state.getURI().toString() + ". subscribing to current edition " + state.getURI().getEdition());
 			mStorage.setMessageEditionHint(ident, state.getURI().getEdition());
 			addSubscription(state.getURI(), state.getURI().getEdition());
 		}
