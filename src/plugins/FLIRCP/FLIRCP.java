@@ -85,11 +85,19 @@ public class FLIRCP implements FredPlugin, FredPluginThreadless, FredPluginL10n 
 		// use the last parameter called menuOffset to change the display order (0 = left, no parameter = right)
 		mPageMaker.addNavigationCategory(mToadlet.path(), "IRC Chat", "IRC Chat for Freenet", this);
 		// add first visible navigation item
-		mFredWebUI.register(mToadlet, "IRC Chat", mToadlet.path() + "channelWindow" , true, "Public Chat", "public chat", false, null, this);
-		mFredWebUI.register(mToadlet, "IRC Chat", mToadlet.path() + "options" , true, "Options", "configure your flircp experience", false, null, this);
-		mFredWebUI.register(mToadlet, "IRC Chat", mToadlet.path() + "stats" , true, "Statistics", "show statistics", false, null, this);
-		// add another hidden navigation item to catch a click on main navigation category
-		mFredWebUI.register(mToadlet, null, mToadlet.path(), true, false);
+		if(mStorage.config.AllowFullAccessOnly) {
+			mFredWebUI.register(mToadlet, "IRC Chat", mToadlet.path() + "channelWindow" , true, "Public Chat", "public chat", true, null, this);
+			mFredWebUI.register(mToadlet, "IRC Chat", mToadlet.path() + "options" , true, "Options", "configure your flircp experience", true, null, this);
+			mFredWebUI.register(mToadlet, "IRC Chat", mToadlet.path() + "stats" , true, "Statistics", "show statistics", true, null, this);
+			// add another hidden navigation item to catch a click on main navigation category
+			mFredWebUI.register(mToadlet, null, mToadlet.path(), true, true);
+		} else {
+			mFredWebUI.register(mToadlet, "IRC Chat", mToadlet.path() + "channelWindow" , true, "Public Chat", "public chat", false, null, this);
+			mFredWebUI.register(mToadlet, "IRC Chat", mToadlet.path() + "options" , true, "Options", "configure your flircp experience", false, null, this);
+			mFredWebUI.register(mToadlet, "IRC Chat", mToadlet.path() + "stats" , true, "Statistics", "show statistics", false, null, this);
+			// add another hidden navigation item to catch a click on main navigation category
+			mFredWebUI.register(mToadlet, null, mToadlet.path(), true, false);
+		}
 		mThreadWorker.start();
 	}
 	

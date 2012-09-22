@@ -41,7 +41,6 @@ public class FreenetMessageParser extends Thread {
 	}
 	
 	public void terminate() {
-		// FIXME: isRunning should be isTerminating()
 		isRunning = false;
 		this.interrupt();
 	}
@@ -236,17 +235,16 @@ public class FreenetMessageParser extends Thread {
 				for(String key : keyPairs.keySet()) {
 					if(key.startsWith("topic.#")) {
 						// syntax for channel topics in headers: topic.#channel.replace("=",":")=some crazy topic
-						String channel = key.split(".", 2)[1].replace(":", "=");
+						String channel = key.split("\\.", 2)[1].replace(":", "=");
 						String topic = keyPairs.get(key);
 						if (mStorage.addNewChannel(channel)) {
 							mStorage.addUserToChannel(message.ident, channel);
-							// TODO: add config option for new topic = new message
-							mStorage.getChannel(channel).lastMessageIndex += 1;
-							mStorage.getChannel(channel).messages.add(mStorage.new PlainTextMessage(message.ident, mStorage.getNick(message.ident) + " changed topic to: " + topic, "*", channel, new Date().getTime(), mStorage.getChannel(channel).lastMessageIndex));
 							if(!topic.equals("")
 									&& !topic.equals(mStorage.getChannel(channel).topic)
 									&& mStorage.getChannel(channel).topic.equals("")) {
-								System.err.println("got new topic from keepalive for " + channel + ": " + topic);
+								// TODO: add config option for new topic = new message
+								mStorage.getChannel(channel).lastMessageIndex += 1;
+								mStorage.getChannel(channel).messages.add(mStorage.new PlainTextMessage(message.ident, "found new topic through automatic topic propagation from " + mStorage.getNick(message.ident) + ": " + topic, "*", channel, new Date().getTime(), mStorage.getChannel(channel).lastMessageIndex));
 								mStorage.setTopic(channel, topic);
 							}
 						}

@@ -44,7 +44,7 @@ public class RAMstore {
 		this.announceKey="KSK@" + this.config.messageBase + "|"+ this.currentDateString + "|Announce|" + announceEdition;
 		this.welcomeText = "[b]Welcome to flircp.[/b]\n\n";
 		this.welcomeText += "This plugin provides a realtime chat for Freenet.\n";
-		this.welcomeText += "Latency is mostly 20 to 30 seconds on a well connected node.\n";
+		this.welcomeText += "Latency is mostly 20 to 30 seconds per request/insert on a well connected node.\n";
 		this.welcomeText += "flircp is compatible with FLIP so you can communicate with other users of flircp and FLIP.\n";
 		this.welcomeText += "This software is currently in alpha stage (" + config.version_major + "." + config.version_minor + "." + config.version_debug + ").\n";
 		this.welcomeText += "If you find a bug or hava a feature proposal please tell me (SeekingFor) about. You can reach me in #flircp.\n\n";
@@ -53,7 +53,7 @@ public class RAMstore {
 		this.welcomeText += "As this is the first time you start flircp please take the time to configure your settings.\n";
 		this.welcomeText += "Currently there is no permanent storage implemented, if you restart the plugin (or your Freenet node) all settings will be lost and you have to configure flircp again.\n\n";
 		this.welcomeText += "Your announcment to other users will be kind of slow in this version, next versions will improve this.\n";
-		this.welcomeText += "If you have any questions feel free to head over to #flircp.";
+		this.welcomeText += "For a list of commands type /help. If you have any questions feel free to head over to #flircp.";
 	}
 	
 	public class Config {
@@ -64,7 +64,8 @@ public class RAMstore {
 		public String messageBase = "flip";
 		public int version_major = 0;
 		public int version_minor = 0;
-		public int version_debug = 3;
+		public int version_debug = 4;
+		public Boolean AllowFullAccessOnly = true;
 		// ident
 		public String nick = "flircp_testuser";
 		public String requestKey = "";
@@ -89,6 +90,8 @@ public class RAMstore {
 		public Boolean showJoinsParts = false;
 		public Boolean enableJavaScriptToScrollDownToLatestMessage = true;
 		public int iFrameFontSize = 10;
+		public Boolean encapsulateNicks = false;
+		public Boolean useDelimeterForNicks = true;
 		public Config() {
 			// TODO: load config from file / db / whatever
 		}
@@ -132,10 +135,11 @@ public class RAMstore {
 		// - channels with more than one #
 		// - channels without #
 		// - channels with empty name
-		// TODO: add max size
-		if(channelName.startsWith("#") &&
-				channelName.replace("#", "").length() == channelName.length() - 1 &&
-				!channelName.equals("#")) {
+		// - channels with size > 50
+		if(channelName.startsWith("#")
+				&& channelName.replace("#", "").length() == channelName.length() - 1
+				&& !channelName.equals("#")
+				&& channelName.length() < 51) {
 			Boolean found = false;
 			for(Channel chan : channelList) {
 				if(chan != null && chan.name.equals(channelName)) {
@@ -227,12 +231,18 @@ public class RAMstore {
 
 	// channel functions
 	public void addNewUser(String requestKey) {
-		addNewUser(requestKey, false);
+		if(!requestKey.equals(config.requestKey)) {
+			addNewUser(requestKey, false);
+		}
 	}
 	public void addNewUser(String requestKey, Boolean ownUser) {
 		User newUser = new User();
 		userMap.put(requestKey, newUser);
-		if(!ownUser) { knownIdents.add(requestKey); }
+		if(!ownUser) {
+			knownIdents.add(requestKey);
+		} else if(knownIdents.contains(requestKey)) {
+			knownIdents.remove(requestKey);
+		}
 	}
 	public void addUserToChannel(String requestKey, String channel) {
 		userMap.get(requestKey).lastActivity = new Date().getTime();
@@ -316,7 +326,7 @@ public class RAMstore {
 		return false;
 	}
 	public String getWhoIs(String nickname) {
-		if(!config.nick.equals(nickname)) {
+		if(!config.nick.equals(nickname) && !nickname.equals("")) {
 			for(String ident : knownIdents) {
 				if(userMap.get(ident).nick.equals(nickname)) {
 					String channels = "";
@@ -324,11 +334,23 @@ public class RAMstore {
 						channels += channel + " ";
 					}
 					if(channels.length() > 0) { channels = channels.substring(0, channels.length() - 1); }
-					return "[" + nickname + "]" + " Public key: " + ident + "\n[" + nickname + "]" + " channels: " + channels + "\n[" + nickname + "]" + " has been idle: " + ((new Date().getTime() - userMap.get(ident).lastMessageTime) / 1000) + " seconds" ;
+					return "[" + nickname + "] Public key: " + ident + "\n[" + nickname + "] channels: " + channels + "\n[" + nickname + "] has been idle: " + ((new Date().getTime() - userMap.get(ident).lastMessageTime) / 1000) + " seconds" ;
 				}
 			}
 		} else {
-			return "[" + nickname + "]" + " Public key: " + config.requestKey + "\n[" + nickname + "]" + " has been idle: " + ((new Date().getTime() - userMap.get(config.requestKey).lastMessageTime) / 1000) + " seconds" ;
+			nickname = config.nick;
+			String channels ="";
+			if(config.autojoinChannel) {
+				for(Channel chan : channelList) {
+					channels += chan.name + " ";
+				}
+			} else {
+				for(String chan : config.joinedChannels) {
+					channels += chan + " ";
+				}
+			}
+			if(channels.length() > 0) { channels = channels.substring(0, channels.length() - 1); }
+			return "[" + nickname + "] Public key: " + config.requestKey + "\n[" + nickname + "] channels: " + channels + "\n[" + nickname + "] has been idle: " + ((new Date().getTime() - userMap.get(config.requestKey).lastMessageTime) / 1000) + " seconds" ;
 		}
 		return "[WHOIS] nick not found.";
 	}
@@ -347,6 +369,8 @@ public class RAMstore {
 				setIdentEdition(ident, 0);
 				setMessageEditionHint(ident, 0);
 			}
+			setIdentEdition(config.requestKey, 0);
+			setMessageEditionHint(config.requestKey, 0);
 			identFetcher.resetSubcriptions();
 			messageFetcher.resetSubcriptions();
 		} catch (ConcurrentModificationException e) {

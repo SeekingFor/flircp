@@ -47,6 +47,17 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 			mUSKmanager.unsubscribe(usk, this);
 		}
 	}
+	public void removeSingleFetcher(String ident) {
+		String curIdent;
+		for(USK usk : mSubscriptions) {
+			curIdent = usk.getURI().toString().split("/",2)[0].replace("USK@", "SSK@") + "/"; 
+			if(ident.equals(curIdent)) {
+				mUSKmanager.unsubscribe(usk, this);
+				mSubscriptions.remove(usk);
+				break;
+			}
+		}
+	}
 	public int getSubscriptionCount() {
 		return mSubscriptions.size();
 	}
@@ -54,9 +65,11 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 	public void addInitialSubscription(String identRequestKey) {
 		FreenetURI identRequestURI = null;
 		try {
-			identRequestURI = new FreenetURI(identRequestKey).setKeyType("USK").setDocName(mStorage.getMessageBase() + "|" + mStorage.getCurrentDateString() + "|Identity");
-			identRequestURI = identRequestURI.setSuggestedEdition(0).setMetaString(null);
-			addRequest(identRequestURI);
+			if(!identRequestKey.equals(mStorage.config.requestKey)) {
+				identRequestURI = new FreenetURI(identRequestKey).setKeyType("USK").setDocName(mStorage.getMessageBase() + "|" + mStorage.getCurrentDateString() + "|Identity");
+				identRequestURI = identRequestURI.setSuggestedEdition(0).setMetaString(null);
+				addRequest(identRequestURI);
+			}
 		} catch (MalformedURLException e) {
 			System.err.println("[USK_IdentityFetcher]::addInitialSubscription identRequestKey = " + identRequestKey);
 			System.err.println("[USK_IdentityFetcher]::addInitialSubscription MalformedURLException. " + e.getMessage());
@@ -72,12 +85,15 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 	private void addSubscription(FreenetURI identRequestURI) {
 		USK usk = null;
 		try {
-			usk = USK.create(identRequestURI);
-			USK uskIdent = USK.create(identRequestURI);
-			if(!mSubscriptions.contains(uskIdent)) {
-				mStorage.userMap.get(identRequestURI.toString().split("/")[0].replace("USK", "SSK") + "/").identSubscriptionActive = true;
-				mUSKmanager.subscribe(usk, this, true, true, this);
-				mSubscriptions.add(uskIdent);
+			String ident = identRequestURI.toString().split("/",2)[0].replace("USK@", "SSK@") + "/"; 
+			if(!ident.equals(mStorage.config.requestKey)) {
+				usk = USK.create(identRequestURI);
+				USK uskIdent = USK.create(identRequestURI);
+				if(!mSubscriptions.contains(uskIdent)) {
+					mStorage.userMap.get(ident).identSubscriptionActive = true;
+					mUSKmanager.subscribe(usk, this, true, true, this);
+					mSubscriptions.add(uskIdent);
+				}
 			}
 		} catch (MalformedURLException e) {
 			if (usk != null) {
@@ -147,11 +163,12 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 		//System.err.println("[USK_IdentityFetcher] found edition " + l + " codec=" + codec + " newKnownGood=" + newKnownGood + " newSlotToo=" + newSlotToo + " data: somedata" + " USK=" + key.getURI().toASCIIString());
 		// FIXME: replace USK => SSK; last /x => -; add edition l
 		// FIXME: use USK and catch redirect
-		String ident = key.getURI().toString().split("/")[0].replace("USK", "SSK") + "/";
-		//System.err.println(ident);
-		if(l > mStorage.getIdentEdition(ident)) {
-			mStorage.setIdentEdition(ident, l);
-			addRequest(key.getURI().setSuggestedEdition(l));
+		String ident = key.getURI().toString().split("/")[0].replace("USK@", "SSK@") + "/";
+		if(!ident.equals(mStorage.config.requestKey)) {
+			if(l > mStorage.getIdentEdition(ident)) {
+				mStorage.setIdentEdition(ident, l);
+				addRequest(key.getURI().setSuggestedEdition(l));
+			}
 		}
 	}
 
@@ -168,9 +185,11 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 			// addSubscription is called after successful requesting the
 			// initital identity message e.g. no redirect to newer versions found
 			// FIXME: use local mSubscriptions instead?
-			String ident = state.getURI().toString().split("/")[0].replace("USK", "SSK") + "/";
-			if(!mStorage.userMap.get(ident).identSubscriptionActive) {
-				addSubscription(state.getURI());
+			String ident = state.getURI().toString().split("/", 2)[0].replace("USK@", "SSK@") + "/"; 
+			if(!ident.equals(mStorage.config.requestKey)) {
+				if(!mStorage.userMap.get(ident).identSubscriptionActive) {
+					addSubscription(state.getURI());
+				}
 			}
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
@@ -200,14 +219,16 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 	private void checkInvalid(FreenetURI uri, String reason, String message) {
 		// fatal errors. can't fetch this request. subscribing to edition 0 or ignoring this edition.
 		// FIXME: better stop fetching this identity?
-		String ident = uri.toString().split("/")[0].replace("USK", "SSK") + "/";
-		if(!mStorage.userMap.get(ident).identSubscriptionActive) {
-			// initial USK request, no subscription activated yet.
-			addSubscription(uri);
-			System.err.println("[USK_IdentityFetcher] " + reason + ". initial request. subscribing to edition " + uri.getEdition() + " anyway. " + message);
-		} else {
-			// backed up by subscription. we just wait for the next edition.
-			System.err.println("[USK_IdentityFetcher] " + reason + ". waiting for next edition from subscription. " + uri.toString() + " " + message);
+		String ident = uri.toString().split("/", 2)[0].replace("USK@", "SSK@") + "/";
+		if(!ident.equals(mStorage.config.requestKey)) {
+			if(!mStorage.userMap.get(ident).identSubscriptionActive) {
+				// initial USK request, no subscription activated yet.
+				addSubscription(uri);
+				System.err.println("[USK_IdentityFetcher] " + reason + ". initial request. subscribing to edition " + uri.getEdition() + " anyway. " + message);
+			} else {
+				// backed up by subscription. we just wait for the next edition.
+				System.err.println("[USK_IdentityFetcher] " + reason + ". waiting for next edition from subscription. " + uri.toString() + " " + message);
+			}
 		}
 	}
 
@@ -326,8 +347,11 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 		//mFetchContext.setCooldownRetries(cooldownRetries);
 		//mFetchContext.setCooldownTime(cooldownTime);
 		try {
-			mRequestClient.fetch(uri, this, this, mFetchContext, (short) 2);
-			concurrentFetchCount += 1;
+			String ident = uri.toString().split("/", 2)[0].replace("USK@", "SSK@") + "/"; 
+			if(!ident.equals(mStorage.config.requestKey)) {
+				mRequestClient.fetch(uri, this, this, mFetchContext, (short) 2);
+				concurrentFetchCount += 1;
+			}
 		} catch (FetchException e) {
 			System.err.println("[USK_IdentityFetcher]::addRequest() FetchException " + e.getMessage());
 		}

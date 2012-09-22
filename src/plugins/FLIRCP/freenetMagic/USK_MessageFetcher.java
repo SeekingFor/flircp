@@ -47,6 +47,17 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 			mUSKmanager.unsubscribe(usk, this);
 		}
 	}
+	public void removeSingleFetcher(String ident) {
+		String curIdent;
+		for(USK usk : mSubscriptions) {
+			curIdent = usk.getURI().toString().split("/",2)[0].replace("USK@", "SSK@") + "/"; 
+			if(ident.equals(curIdent)) {
+				mUSKmanager.unsubscribe(usk, this);
+				mSubscriptions.remove(usk);
+				break;
+			}
+		}
+	}
 	public int getSubscriptionCount() {
 		return mSubscriptions.size();
 	}
@@ -58,9 +69,11 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 	public void addInitialMessageSubscription(String identRequestKey) {
 		FreenetURI identRequestURI = null;
 		try {
-			identRequestURI = new FreenetURI(identRequestKey).setKeyType("USK").setDocName(mStorage.getMessageBase() + "|" + mStorage.getCurrentDateString() + "|Message");
-			identRequestURI = identRequestURI.setSuggestedEdition(mStorage.getMessageEditionHint(identRequestKey)); //.setMetaString(null);
-			addRequest(identRequestURI);
+			if(!identRequestKey.equals(mStorage.config.requestKey)) {
+				identRequestURI = new FreenetURI(identRequestKey).setKeyType("USK").setDocName(mStorage.getMessageBase() + "|" + mStorage.getCurrentDateString() + "|Message");
+				identRequestURI = identRequestURI.setSuggestedEdition(mStorage.getMessageEditionHint(identRequestKey)); //.setMetaString(null);
+				addRequest(identRequestURI);
+			}
 		} catch (MalformedURLException e) {
 			System.err.println("[USK_MessageFetcher]::addInitialSubscription identRequestKey = " + identRequestKey);
 			System.err.println("[USK_MessageFetcher]::addInitialSubscription MalformedURLException. " + e.getMessage());
@@ -76,11 +89,14 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 	private void addSubscription(FreenetURI identRequestURI, long latestEdition) {
 		USK usk = null;
 		try {
-			usk = USK.create(identRequestURI.setSuggestedEdition(latestEdition));
-			USK uskIdent = USK.create(identRequestURI.setSuggestedEdition(0));
-			if(!mSubscriptions.contains(uskIdent)) {
-				mUSKmanager.subscribe(usk, this, true, true, this);
-				mSubscriptions.add(uskIdent);
+			String ident = identRequestURI.toString().split("/",2)[0].replace("USK@", "SSK@") + "/"; 
+			if(!ident.equals(mStorage.config.requestKey)) {
+				usk = USK.create(identRequestURI.setSuggestedEdition(latestEdition));
+				USK uskIdent = USK.create(identRequestURI.setSuggestedEdition(0));
+				if(!mSubscriptions.contains(uskIdent)) {
+					mUSKmanager.subscribe(usk, this, true, true, this);
+					mSubscriptions.add(uskIdent);
+				}
 			}
 		} catch (MalformedURLException e) {
 			if (usk != null) {
@@ -158,8 +174,11 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 		//mFetchContext.setCooldownRetries(cooldownRetries);
 		//mFetchContext.setCooldownTime(cooldownTime);
 		try {
-			mFetcher.fetch(uri, this, this, mFetchContext, (short) 1);
-			concurrentFetchCount += 1;
+			String ident = uri.toString().split("/",2)[0].replace("USK@", "SSK@") + "/"; 
+			if(!ident.equals(mStorage.config.requestKey)) {
+				mFetcher.fetch(uri, this, this, mFetchContext, (short) 1);
+				concurrentFetchCount += 1;
+			}
 		} catch (FetchException e) {
 			System.err.println("[USK_MessageFetcher]::addRequest() FetchException " + e.getMessage());
 		}
@@ -202,14 +221,17 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 		// fatal errors. can't fetch this request. subscribing to current edition or ignoring this edition.
 		// FIXME: better stop fetching this identity?
 		concurrentFetchCount -= 1;
-		if(uri.isUSK()) {
-			// initial USK request, no subscription activated yet.
-			// subscribe to current edition
-			addSubscription(uri, uri.getEdition());
-			System.err.println("[USK_MessageFetcher] " + reason + ". initial request. subscribing anyway. " + uri.toString() + " " + message);
-		} else {
-			// backed up by subscription. we wait for the next edition and print the error for manual analysis.
-			System.err.println("[USK_MessageFetcher] " + reason + " for edition " + uri.getEdition() + ". " + message + "\n" + uri.toString());
+		String ident = uri.toString().split("/",2)[0].replace("USK@", "SSK@") + "/"; 
+		if(!ident.equals(mStorage.config.requestKey)) {
+			if(uri.isUSK()) {
+				// initial USK request, no subscription activated yet.
+				// subscribe to current edition
+				addSubscription(uri, uri.getEdition());
+				System.err.println("[USK_MessageFetcher] " + reason + ". initial request. subscribing anyway. " + uri.toString() + " " + message);
+			} else {
+				// backed up by subscription. we wait for the next edition and print the error for manual analysis.
+				System.err.println("[USK_MessageFetcher] " + reason + " for edition " + uri.getEdition() + ". " + message + "\n" + uri.toString());
+			}
 		}
 	}
 
@@ -310,21 +332,23 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 	@Override
 	public void onSuccess(FetchResult result, ClientGetter state,
 			ObjectContainer container) {
-		String ident = state.getURI().toString().split("/")[0].replace("USK","SSK") + "/";
+		String ident = state.getURI().toString().split("/", 2)[0].replace("USK@","SSK@") + "/";
 		concurrentFetchCount -= 1;
-		if(state.getURI().toString().startsWith("USK@")) {
-			//System.err.println("[USK_MessageFetcher]::onSuccess key type = initial USK");
-			// only the initial request is a USK request. all requests issued by
-			// polling the USK for new editions use SSK. see below at onFoundEdition().
-			//System.err.println("[USK_MessageFetcher] onSuccess(). got content for " + state.getURI().toString() + ". subscribing to current edition " + state.getURI().getEdition());
-			mStorage.setMessageEditionHint(ident, state.getURI().getEdition());
-			addSubscription(state.getURI(), state.getURI().getEdition());
-		}
-		try {
-			mFreenetMessageParser.addMessage("message", ident, new String(result.asByteArray()).trim(), state.getURI().toString());
-		} catch (IOException e) {
-			System.err.println("[USK_MessageFetcher]::onSuccess IOException. " + e.getMessage());
-			e.printStackTrace();
+		if(!ident.equals(mStorage.config.requestKey)) {
+			if(state.getURI().toString().startsWith("USK@")) {
+				//System.err.println("[USK_MessageFetcher]::onSuccess key type = initial USK");
+				// only the initial request is a USK request. all requests issued by
+				// polling the USK for new editions use SSK. see below at onFoundEdition().
+				//System.err.println("[USK_MessageFetcher] onSuccess(). got content for " + state.getURI().toString() + ". subscribing to current edition " + state.getURI().getEdition());
+				mStorage.setMessageEditionHint(ident, state.getURI().getEdition());
+				addSubscription(state.getURI(), state.getURI().getEdition());
+			}
+			try {
+				mFreenetMessageParser.addMessage("message", ident, new String(result.asByteArray()).trim(), state.getURI().toString());
+			} catch (IOException e) {
+				System.err.println("[USK_MessageFetcher]::onSuccess IOException. " + e.getMessage());
+				e.printStackTrace();
+			}
 		}
 	}
 
@@ -342,23 +366,25 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 	public void onFoundEdition(long l, USK key, ObjectContainer container,
 			ClientContext context, boolean metadata, short codec, byte[] data,
 			boolean newKnownGood, boolean newSlotToo) {
-		String ident = key.getURI().toString().split("/")[0].replace("USK", "SSK") + "/";
-		long oldHint = mStorage.getMessageEditionHint(ident);
-		if(l > oldHint) {
-			mStorage.setMessageEditionHint(ident, l);
-			String newKeyBase = ident + mStorage.getMessageBase() + "|" + mStorage.getCurrentDateString() + "|Message-";
-			long i = oldHint +1;
-			try {
-				Boolean finnished = false;
-				while(!finnished) {
-					//System.err.println("[USK_MessageFetcher] adding new SSK fetcher: " + newKeyBase + i);
-					addRequest(new FreenetURI(newKeyBase + i).setMetaString(null));
-					i += 1;
-					if(i > l) { finnished = true; }
+		String ident = key.getURI().toString().split("/", 2)[0].replace("USK@", "SSK@") + "/";
+		if(!ident.equals(mStorage.config.requestKey)) {
+			long oldHint = mStorage.getMessageEditionHint(ident);
+			if(l > oldHint) {
+				mStorage.setMessageEditionHint(ident, l);
+				String newKeyBase = ident + mStorage.getMessageBase() + "|" + mStorage.getCurrentDateString() + "|Message-";
+				long i = oldHint +1;
+				try {
+					Boolean finnished = false;
+					while(!finnished) {
+						//System.err.println("[USK_MessageFetcher] adding new SSK fetcher: " + newKeyBase + i);
+						addRequest(new FreenetURI(newKeyBase + i).setMetaString(null));
+						i += 1;
+						if(i > l) { finnished = true; }
+					}
+				} catch (MalformedURLException e) {
+					System.err.println("[USK_MessageFetcher] adding new SSK fetcher: " + newKeyBase + i + " failed. " + e.getMessage());
+					e.printStackTrace();
 				}
-			} catch (MalformedURLException e) {
-				System.err.println("[USK_MessageFetcher] adding new SSK fetcher: " + newKeyBase + i + " failed. " + e.getMessage());
-				e.printStackTrace();
 			}
 		}
 	}
