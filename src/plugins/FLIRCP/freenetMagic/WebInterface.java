@@ -2,6 +2,9 @@ package plugins.FLIRCP.freenetMagic;
 
 import java.awt.image.RenderedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -10,6 +13,7 @@ import java.util.Collection;
 import java.util.ConcurrentModificationException;
 import java.util.Date;
 import java.util.Iterator;
+import java.util.Properties;
 import java.util.TimeZone;
 
 import javax.imageio.ImageIO;
@@ -239,23 +243,13 @@ public class WebInterface extends Toadlet {
 		if(uOpened) { builder.append("</u>"); }
 		return builder.toString();
 	}
-	private String addSpaces(String input) {
-		// FIXME: add config option for max nick length. RFC?
-		return addSpaces(input, 25);
-	}
-	private String addSpaces(String input, int desiredLenth) {
-		for(int i = 0; i < desiredLenth - input.length(); i ++) {
-			input = input + " ";
-		}
-		return input;
-	}
-	
-	private HTMLNode parseWelcomeCreateA(String tag) {
+
+	private HTMLNode parseWelcomeCreateLink(String tag) {
 		HTMLNode aNode = new HTMLNode("a", tag);
 		if(tag.equals("FLIP")) {
-			aNode.addAttribute("href", "../USK@pGQPA-9PcFiE3A2tCuCjacK165UaX07AQYw98iDQrNA,8gwQ67ytBNR03hNj7JU~ceeew22HVq6G50dcEeMcgks,AQACAAE/flip/7/");
+			aNode.addAttribute("href", "../USK@pGQPA-9PcFiE3A2tCuCjacK165UaX07AQYw98iDQrNA,8gwQ67ytBNR03hNj7JU~ceeew22HVq6G50dcEeMcgks,AQACAAE/flip/9/");
 		} else if(tag.equals("Freenet Social Network Guide for FLIP")) {
-			aNode.addAttribute("href", "../USK@t5zaONbYd5DvGNNSokVnDCdrIEytn9U5SSD~pYF0RTE,guWyS9aCMcywU5PFBrKsMiXs7LzwKfQlGSRi17fpffc,AQACAAE/fsng/32/flip.html");
+			aNode.addAttribute("href", "../USK@t5zaONbYd5DvGNNSokVnDCdrIEytn9U5SSD~pYF0RTE,guWyS9aCMcywU5PFBrKsMiXs7LzwKfQlGSRi17fpffc,AQACAAE/fsng/37/flip.html");
 		} else {
 			aNode.addAttribute("href", "not found");
 		}
@@ -272,18 +266,19 @@ public class WebInterface extends Toadlet {
 			buffer = "";
 			for(String word : line.split(" ")) {
 				if(!buffer.equals("") && (word.startsWith("[a]") || word.startsWith("[b]"))) {
+					// TODO: uh? check this^ again. should be !(word.startsWith() || word.startsWith())?
 					ownContentNode.addChild(new HTMLNode("span", buffer));
 					buffer = "";
 				}
 				if(word.startsWith("[a]") && word.contains("[/a]")) {
 					buffer = word.replace("[a]", "").replace("[/a]", "");
-					ownContentNode.addChild(parseWelcomeCreateA(buffer));
+					ownContentNode.addChild(parseWelcomeCreateLink(buffer));
 					buffer = " ";
 				} else if(word.startsWith("[a]") && !word.contains("[/a]")) {
 					buffer = word.replace("[a]", "") + " ";
 				} else if(word.contains("[/a]")) {
 					buffer += word.replace("[/a]", "");
-					ownContentNode.addChild(parseWelcomeCreateA(buffer));
+					ownContentNode.addChild(parseWelcomeCreateLink(buffer));
 					buffer = " ";
 				} else if(word.startsWith("[b]") && word.contains("[/b]")) {
 					ownContentNode.addChild(new HTMLNode("b", word.replace("[b]", "").replace("[/b]", "")));
@@ -414,7 +409,7 @@ public class WebInterface extends Toadlet {
 			int messageIndex = 0;
 			SimpleDateFormat sdf = new SimpleDateFormat("z HH:mm:ss");
 			sdf.setTimeZone(TimeZone.getTimeZone(mStorage.config.timeZone));
-			// ugly but nesessary as we need a copy of the data not a reference. reason: concurrent modification exceptions.
+			// ugly but necessary as we need a copy of the data not a reference. reason: concurrent modification exceptions.
 			PlainTextMessage[] channelArray = mStorage.getChannel(channel).messages.toArray(new PlainTextMessage [mStorage.getChannel(channel).messages.size()]);
 			String newContent = "";
 			for(PlainTextMessage message : channelArray) {
@@ -430,10 +425,10 @@ public class WebInterface extends Toadlet {
 					}
 				}
 				if(!message.message.toLowerCase().contains(mStorage.config.nick.toLowerCase())) {
-					newContent = "<tr><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'>" + sdf.format(message.timeStamp) + "</td><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;' align='right'>&nbsp;" + user + "&nbsp;</td><td valign='top' width='100%' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'><span>" + basicHTMLencode(message.message) + "</span></td></tr>\n";					
+					newContent = "<tr><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'>" + sdf.format(message.timeStamp) + "</td><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;' align='right'>&nbsp;" + user + "&nbsp;</td><td valign='top' width='100%' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'><div style=\"word-wrap: break-word;\">" + basicHTMLencode(message.message) + "</div></td></tr>\n";					
 				} else {
 					// highlight
-					newContent = "<tr><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'>" + sdf.format(message.timeStamp) + "</td><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;' align='right'>&nbsp;" + user + "&nbsp;</td><td valign='top' width='100%' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'><font color='red'><span>" + basicHTMLencode(message.message) + "</span></font></td></tr>\n";
+					newContent = "<tr><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'>" + sdf.format(message.timeStamp) + "</td><td valign='top' nowrap='nowrap' style='font-size: " + mStorage.config.iFrameFontSize + "pt;' align='right'>&nbsp;" + user + "&nbsp;</td><td valign='top' width='100%' style='font-size: " + mStorage.config.iFrameFontSize + "pt;'><font color='red'><div style=\"word-wrap: break-word;\">" + basicHTMLencode(message.message) + "</div></font></td></tr>\n";
 				}
 				messageIndex = message.index;
 			}
@@ -460,8 +455,7 @@ public class WebInterface extends Toadlet {
 			// FIXME: this is bad syntax and wrong, is it?
 			iFrameHTML += "<td height='100%'>\n";
 			iFrameHTML += "<select multiple='multiple' style='width: 100%; height: 100%;' name='user'>\n";
-			// TODO: add config option for first empty line in userlist 
-			if(1 == 2) { iFrameHTML += "<option> </option>\n"; }
+
 			// returns a new list => no concurrent modifications possible
 			for(String user : mStorage.getUsersInChannel(channel)) {
 				iFrameHTML += "<option>" + user.replace("/option","") + "</option>\n";
@@ -546,7 +540,7 @@ public class WebInterface extends Toadlet {
 			}
 		} catch (MalformedURLException e) {
 			error = true;
-			errorMsg += "wrong format for request or insert key. must be SSK@blah,blah,blah " + e.getMessage() + "\n";
+			errorMsg += "wrong format for request or insert key. must be SSK@blah,blah,blah/ " + e.getMessage() + "\n";
 		}
 		// TODO: add sanity checks for RSA
 		// RSA public key
@@ -662,12 +656,14 @@ public class WebInterface extends Toadlet {
 			error = true;
 			errorMsg += "autojoin channels must be either true or false.\n";
 		}
-		// autojoin channels
+		// irc style nicks
 		input = req.getPartAsStringFailsafe("encapsulateNicks", 10);
 		if(input.toLowerCase().equals("true")) {
 			mStorage.config.encapsulateNicks = true;
+			mStorage.config.useDelimeterForNicks = false;
 		} else if(input.toLowerCase().equals("false")) {
 			mStorage.config.encapsulateNicks = false;
+			mStorage.config.useDelimeterForNicks = true;
 		} else {
 			error = true;
 			errorMsg += "encapsulate nicks in < > must be either true or false.\n";
@@ -682,7 +678,51 @@ public class WebInterface extends Toadlet {
 			errorMsg += "wrong format for iFrame font size. must be an integer.\n";
 		}
 		
-		
+		// save to configuration file
+		Properties configProps = new Properties();
+		FileInputStream in;
+		FileOutputStream out;
+		try {
+			in = new FileInputStream("flircp/config");
+			configProps.load(in);
+			in.close();
+		} catch (FileNotFoundException e) {
+			// configuration file does not yet exist or can't be opened for reading
+		} catch (IOException e) {
+			// file can't be read?
+		} catch (IllegalArgumentException e) {
+			// configuration file contains at least one invalid property
+		}
+		configProps.setProperty("freenet.key.request", mStorage.config.requestKey);
+		configProps.setProperty("freenet.key.insert", mStorage.config.insertKey);
+		configProps.setProperty("nick", mStorage.config.nick);
+		configProps.setProperty("rsa.public", mStorage.config.RSApublicKey);
+		configProps.setProperty("rsa.private", mStorage.config.RSAprivateKey);
+		configProps.setProperty("irc.channels.autojoin", mStorage.config.autojoinChannel.toString());
+		configProps.setProperty("ui.web.iframe.height", Integer.toString(mStorage.config.iFrameHeight));
+		configProps.setProperty("ui.web.iframe.refreshinterval", Integer.toString(mStorage.config.iFrameRefreshInverval));
+		configProps.setProperty("ui.web.chat.fontsize", Integer.toString(mStorage.config.iFrameFontSize));
+		configProps.setProperty("ui.web.chat.userlist.width", Integer.toString(mStorage.config.userlistWidth));
+		configProps.setProperty("ui.web.chat.timezone", mStorage.config.timeZone);
+		configProps.setProperty("ui.web.chat.showJoinPart", mStorage.config.showJoinsParts.toString());
+		configProps.setProperty("ui.web.chat.nickStyleIRC", mStorage.config.encapsulateNicks.toString());
+		try {
+			out = new FileOutputStream("flircp/config", false);
+			configProps.store(out, "configuration for flircp " + mStorage.config.version_major + "." + mStorage.config.version_minor + "." + mStorage.config.version_debug + " created at the configuration page.");
+			out.close();
+		} catch (FileNotFoundException e) {
+			// out stream can't create file
+			error = true;
+			errorMsg += "failed to create or modify configuration file. please check your file permissions for freenet_directory/flircp/config. " + e.getMessage() + "\n";
+		} catch (IOException e) {
+			// configProps can't write to file
+			error = true;
+			errorMsg += "failed to create or modify configuration file. please check your file permissions for freenet_directory/flircp/config. " + e.getMessage() + "\n";
+		} catch(ClassCastException e) {
+			// at least one property is invalid 
+			error = true;
+			errorMsg += "at least one of your configuration values is invalid. please correct it and save again. " + e.getMessage() + "\n";
+		}
 		// done
 		HTMLNode messageDiv = new HTMLNode("div").addChild("b");
 		HTMLNode fontNode;
@@ -697,7 +737,24 @@ public class WebInterface extends Toadlet {
 			fontNode = new HTMLNode("font", "Configuration saved.");
 			fontNode.addAttribute("color", "green");
 			messageDiv.addChild(fontNode);
+			if(mStorage.config.firstStart) {
+				messageDiv.addChild("br");
+				messageDiv.addChild("br");
+				messageDiv.addChild(new HTMLNode("span", "You can now "));
+				fontNode = new HTMLNode("a", "start chatting");
+				fontNode.addAttribute("href", "channelWindow");
+				messageDiv.addChild(fontNode);
+				messageDiv.addChild(new HTMLNode("span", "."));
+			}
 			mStorage.config.firstStart = false;
+		}
+		configProps.setProperty("firstStart", mStorage.config.firstStart.toString());
+		try {
+			out = new FileOutputStream("flircp/config", false);
+			configProps.store(out, "configuration for flircp " + mStorage.config.version_major + "." + mStorage.config.version_minor + "." + mStorage.config.version_debug + " created at the configuration page.");
+			out.close();
+		} catch (Exception e) {
+			// ignore
 		}
 		return createConfig(mPageNode, messageDiv);
 	}
@@ -743,10 +800,10 @@ public class WebInterface extends Toadlet {
 		tmpTRnode.addChild(tmpTDnode);
 		table.addChild(tmpTRnode);
 		table.addChild(addConfigTR("nick", "nick", 16, mStorage.config.nick, "nick length must be < 16"));
-		table.addChild(addConfigTR("freenet request key", "requestKey", 100, mStorage.config.requestKey, ""));
-		table.addChild(addConfigTR("freenet insert key", "insertKey", 100, mStorage.config.insertKey, ""));
-		table.addChild(addConfigTR("public RSA key", "RSApublicKey", 100, mStorage.config.RSApublicKey, ""));
-		table.addChild(addConfigTR("private RSA key", "RSAprivateKey", 100, mStorage.config.RSAprivateKey, ""));
+		table.addChild(addConfigTR("freenet request key", "requestKey", 60, mStorage.config.requestKey, ""));
+		table.addChild(addConfigTR("freenet insert key", "insertKey", 60, mStorage.config.insertKey, ""));
+		table.addChild(addConfigTR("public RSA key", "RSApublicKey", 60, mStorage.config.RSApublicKey, ""));
+		table.addChild(addConfigTR("private RSA key", "RSAprivateKey", 60, mStorage.config.RSAprivateKey, ""));
 		//table.addChild(addConfigTR("topicline width", "topiclineWidth", 4, Integer.toString(mStorage.config.topiclineWidth), "topicline width in chars"));
 		//table.addChild(addConfigTR("chatline width", "chatLineWidth", 4, Integer.toString(mStorage.config.chatLineWidth), "chatline width in chars"));
 		table.addChild(addConfigTR("iFrame height", "iframeHeight", 4, Integer.toString(mStorage.config.iFrameHeight), "iFrame height in px"));

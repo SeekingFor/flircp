@@ -44,27 +44,26 @@ public class RAMstore {
 		this.announceKey="KSK@" + this.config.messageBase + "|"+ this.currentDateString + "|Announce|" + announceEdition;
 		this.welcomeText = "[b]Welcome to flircp.[/b]\n\n";
 		this.welcomeText += "This plugin provides a realtime chat for Freenet.\n";
-		this.welcomeText += "Latency is mostly 20 to 30 seconds per request/insert on a well connected node.\n";
+		this.welcomeText += "Latency is mostly 15 to 30 seconds per request/insert on a well connected node.\n";
 		this.welcomeText += "flircp is compatible with FLIP so you can communicate with other users of flircp and FLIP.\n";
-		this.welcomeText += "This software is currently in alpha stage (" + config.version_major + "." + config.version_minor + "." + config.version_debug + ").\n";
-		this.welcomeText += "If you find a bug or hava a feature proposal please tell me (SeekingFor) about. You can reach me in #flircp.\n\n";
+		this.welcomeText += "This software is currently in beta stage (" + config.version_major + "." + config.version_minor + "." + config.version_debug + ").\n";
+		this.welcomeText += "If you find a bug or have a feature proposal to make please tell me (SeekingFor) about it. You can reach me in #flircp.\n\n";
 		this.welcomeText += "Kudos to somedude for writing [a]FLIP[/a] in the first place. Also thanks karl for his patches for FLIP and TheSeeker for helping me out with various issues I had.\n";
-		this.welcomeText += "If you want to use a IRC client instead this plugin you can check out the [a]Freenet Social Network Guide for FLIP[/a] written by JustusRanvier.\n\n";
-		this.welcomeText += "As this is the first time you start flircp please take the time to configure your settings.\n";
-		this.welcomeText += "Currently there is no permanent storage implemented, if you restart the plugin (or your Freenet node) all settings will be lost and you have to configure flircp again.\n\n";
-		this.welcomeText += "Your announcment to other users will be kind of slow in this version, next versions will improve this.\n";
+		this.welcomeText += "If you want to use an IRC client instead of this plugin you can check out the [a]Freenet Social Network Guide for FLIP[/a] written by JustusRanvier.\n\n";
+		this.welcomeText += "As this is the first time you start flircp please take the time to configure your settings.\n\n";
+		this.welcomeText += "Your initial announcement to other users may be a little slower than it would be possible. Next versions should improve this.\n";
 		this.welcomeText += "For a list of commands type /help. If you have any questions feel free to head over to #flircp.";
 	}
 	
 	public class Config {
 		// general
-		public Boolean firstStart = true;
+		public Boolean firstStart = false;
 		public short concurrentAnnounceFetcher = 10;
 		public short maxMessageRetriesAfterDNF = 10;
 		public String messageBase = "flip";
 		public int version_major = 0;
-		public int version_minor = 0;
-		public int version_debug = 4;
+		public int version_minor = 1;
+		public int version_debug = 0;
 		public Boolean AllowFullAccessOnly = true;
 		// ident
 		public String nick = "flircp_testuser";
@@ -88,7 +87,7 @@ public class RAMstore {
 		public int maxMessageBufferSizePerChannel=1024;
 		public int chatLineWidth = 233;
 		public Boolean showJoinsParts = false;
-		public Boolean enableJavaScriptToScrollDownToLatestMessage = true;
+		public Boolean enableJavaScriptToScrollDownToLatestMessage = false;
 		public int iFrameFontSize = 10;
 		public Boolean encapsulateNicks = false;
 		public Boolean useDelimeterForNicks = true;

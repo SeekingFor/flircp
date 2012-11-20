@@ -100,7 +100,8 @@ public class FreenetMessageParser extends Thread {
 	private Boolean parseAnnounceMessage(FreenetMessage message) {
 		if(!mStorage.knownIdents.contains(message.content) && !message.content.equals(mStorage.config.requestKey)){
 			try {
-				FreenetURI testURI = new FreenetURI(message.content + "test");
+				// FreenetURI testURI = new FreenetURI(message.content + "test");
+				new FreenetURI(message.content + "test");
 			} catch (MalformedURLException e) {
 				// URI is not valid.
 				System.err.println("[FreenetMessageParser] got illegal announce message from " + message.uri + "\nmessage was: " + message.content);

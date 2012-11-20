@@ -182,17 +182,13 @@ public class Worker extends Thread  {
 			if(currentJob == null) {
 				// nothing in queue
 				try {
-					//System.err.println("Threadworker has nothing to do. sleeping for 1 sec.");
 					sleep(100);
 				} catch (InterruptedException e) {
-					//System.err.println("[Worker] sleep interrupted");
+					// ignore. FLIRCP.terminate() will set isRunning == false
 				}				
 			} else {
 				//System.err.println("Threadworker has something in his queue.");
-				//String message = currentJob;
-				//String identKeySpace; // + "/testing-" + mStorage.getIdentEditions().get(currentJob[1]);
 				Bucket mTmpBucket;
-				FreenetURI messageLink;
 				InsertBlock mTmpInsertBlock;
 				OutputStream mTmpOutputStream;
 				String insertKey = "";
@@ -217,7 +213,7 @@ public class Worker extends Thread  {
 					InsertContext mInsertContext = mInserter.getInsertContext(true);
 					mInsertContext.maxInsertRetries = -1;
 					//mInserter.insert(mTmpInsertBlock, false, null, false, mInsertContext, this, (short) 1);
-					messageLink = mInserter.insert(mTmpInsertBlock, false, null);
+					mInserter.insert(mTmpInsertBlock, false, null);
 					//System.err.println("[flircp] inserted message: " + messageLink.toString());
 					// FIXME: do we need the .free() later again if we fail and never reach the next statement?
 					mTmpBucket.free();

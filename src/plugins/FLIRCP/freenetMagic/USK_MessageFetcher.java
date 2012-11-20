@@ -77,11 +77,6 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 		} catch (MalformedURLException e) {
 			System.err.println("[USK_MessageFetcher]::addInitialSubscription identRequestKey = " + identRequestKey);
 			System.err.println("[USK_MessageFetcher]::addInitialSubscription MalformedURLException. " + e.getMessage());
-			if(identRequestURI != null) {
-				System.err.println("[USK_MessageFetcher]::addInitialSubscription identRequestURI = " + identRequestURI.toString());
-			} else {
-				System.err.println("[USK_MessageFetcher]::addInitialSubscription identRequestURI = null.");
-			}
 			e.printStackTrace();
 		}
 	}
