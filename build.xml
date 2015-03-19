@@ -2,6 +2,7 @@
 <!-- ant build file for Freenet -->
 
 <project name="Freenet" default="dist" basedir=".">
+        <property file="override.properties"/>
 	<property name="freenet-cvs-snapshot.location" location="../freenet.jar"/>
 	<property name="freenet-ext.location" location="../freenet-ext.jar"/>
 	<property name="svn.revision" value="@custom@"/>
