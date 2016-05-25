@@ -1,5 +1,6 @@
 package plugins.FLIRCP.freenetMagic;
 
+import freenet.clients.http.LinkFilterExceptedToadlet;
 import java.awt.image.RenderedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
@@ -45,6 +46,12 @@ public class WebInterface extends Toadlet {
 	private String mFormPassword;
 	private Worker mPtrWorker;
 	private BucketFactory mPtrTmpBucketFactory;
+        
+        //FIXME: SOMEONE DO THIS RIGHT SOMEHOW!
+        @Override
+        public boolean allowPOSTWithoutPassword() {
+		return true;
+	}
 	
 	public WebInterface(PluginRespirator pr, String path, RAMstore Storage, String formPassword, Worker ptrWorker) {
 		super(pr.getHLSimpleClient());
@@ -391,7 +398,7 @@ public class WebInterface extends Toadlet {
 	private String createIframeContent(String channel) {
 		String iFrameHTML = "<html>\n";
 		iFrameHTML += "<head>\n";
-		iFrameHTML += "<meta http-equiv='refresh' content='" + mStorage.config.iFrameRefreshInverval + ";url=show?channel=" + channel.replace("#", "") + "#lastLine'>\n";
+		iFrameHTML += "<meta http-equiv='refresh' content='" + mStorage.config.iFrameRefreshInverval + ";url=/flircp/show?channel=" + channel.replace("#", "") + "#lastLine'>\n";
 		iFrameHTML += "</head>\n";
 		iFrameHTML += "<body>\n";
 		if(mStorage.getChannel(channel) != null && (mStorage.config.autojoinChannel
@@ -922,7 +929,7 @@ public class WebInterface extends Toadlet {
 		//iframe.addAttribute("height", "100%");
 		iframe.addAttribute("scrolling", "no");
 		iframe.addAttribute("name", "flircp_iframe");
-		iframe.addAttribute("src", "show?channel="+ channel.replace("#","") + "#lastLine");
+		iframe.addAttribute("src", "/flircp/show?channel="+ channel.replace("#","") + "#lastLine");
 		iframe.setContent("you need to activate frames to use flircp");
 		HTMLNode formMain = new HTMLNode("form");
 		formMain.addAttribute("action", "sendMessage?channel=" + channel.replace("#",""));
@@ -1313,4 +1320,9 @@ public class WebInterface extends Toadlet {
 		}
 		return mPageNode;
 	}
+
+    @Override
+    public boolean isLinkExcepted(URI link) {
+        return true;
+    }
 }
