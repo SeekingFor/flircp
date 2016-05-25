@@ -40,7 +40,7 @@ import freenet.support.api.HTTPRequest;
 import freenet.support.io.BucketTools;
 import freenet.support.io.Closer;
 
-public class WebInterface extends Toadlet {
+public class WebInterface extends Toadlet implements LinkFilterExceptedToadlet{
 	private String mNameSpace;
 	private RAMstore mStorage;
 	private String mFormPassword;
