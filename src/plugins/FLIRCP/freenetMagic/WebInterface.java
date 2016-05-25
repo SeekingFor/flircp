@@ -85,6 +85,13 @@ public class WebInterface extends Toadlet implements LinkFilterExceptedToadlet {
 		//}
 		handleWebRequest(uri, req, ctx);
 	}
+    @Override
+    protected void writeHTMLReply(ToadletContext ctx, int code, String desc, String reply) throws ToadletContextClosedException, IOException {
+        byte[] buffer = reply.getBytes("UTF-8");
+        // send reply headers fproxy allows using frames (via Content-Security-Policy)
+		ctx.sendReplyHeadersFProxy(code, desc, null, "text/html; charset=utf-8", buffer.length);
+		ctx.writeData(buffer, 0, buffer.length);
+	}
 	private void handleWebRequest(URI uri, HTTPRequest req, ToadletContext ctx) throws ToadletContextClosedException, IOException, RedirectException {
 		// We check the requested URI against a whitelist. Any request not found here will result in a info page.
 		if(mStorage.config.AllowFullAccessOnly && !ctx.isAllowedFullAccess()) {
