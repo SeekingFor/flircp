@@ -25,13 +25,13 @@ import freenet.pluginmanager.PluginRespirator;
 import freenet.support.io.ResumeFailedException;
 
 public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, RequestClient {
-	private RAMstore mStorage;
+	private final RAMstore mStorage;
 	private FreenetMessageParser mFreenetMessageParser;
-	private USKManager mUSKmanager;
+	private final USKManager mUSKmanager;
 	private List<USK> mSubscriptions;
 	public int concurrentFetchCount;
-	private HighLevelSimpleClient mRequestClient;
-	
+	private final HighLevelSimpleClient mRequestClient;
+
 	public USK_IdentityFetcher(PluginRespirator pr, RAMstore Storage) {
 		mStorage = Storage;
 		mUSKmanager = pr.getNode().clientCore.uskManager;

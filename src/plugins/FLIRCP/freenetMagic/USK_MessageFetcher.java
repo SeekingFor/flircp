@@ -25,10 +25,10 @@ import freenet.pluginmanager.PluginRespirator;
 import freenet.support.io.ResumeFailedException;
 
 public class USK_MessageFetcher implements USKCallback, ClientGetCallback, RequestClient {
-	private RAMstore mStorage;
+	private final RAMstore mStorage;
 	private FreenetMessageParser mFreenetMessageParser;
-	private HighLevelSimpleClient mFetcher;
-	private USKManager mUSKmanager;
+	private final HighLevelSimpleClient mFetcher;
+	private final USKManager mUSKmanager;
 	private List<USK> mSubscriptions;
 	public int concurrentFetchCount;
 	private HashMap<FreenetURI, Short> mDNFtracker;

@@ -26,14 +26,14 @@ import plugins.FLIRCP.storage.RAMstore.PlainTextMessage;
 import plugins.FLIRCP.storage.RAMstore.Channel;
 
 public class Worker extends Thread  {
-	private RAMstore mStorage;
-	private FreenetMessageParser mFreenetMessageParser;
-	private HighLevelSimpleClient mInserter;
-	private Deque<PlainTextMessage> mQueue;
-	private BucketFactory mTmpBucketFactory;
-	private Async_AnnounceFetcher mAsyncAnnounceFetcher;
-	private USK_IdentityFetcher mIdentityFetcher_usk;
-	private USK_MessageFetcher mMessageFetcher_usk;
+	private final RAMstore mStorage;
+	private final FreenetMessageParser mFreenetMessageParser;
+	private final HighLevelSimpleClient mInserter;
+	private final Deque<PlainTextMessage> mQueue;
+	private final BucketFactory mTmpBucketFactory;
+	private final Async_AnnounceFetcher mAsyncAnnounceFetcher;
+	private final USK_IdentityFetcher mIdentityFetcher_usk;
+	private final USK_MessageFetcher mMessageFetcher_usk;
 	private float processingTime = 0;
 	private long announceEdition = 0;
 	private volatile boolean isRunning;
@@ -192,14 +192,18 @@ public class Worker extends Thread  {
 				InsertBlock mTmpInsertBlock;
 				OutputStream mTmpOutputStream;
 				String insertKey = "";
-				// FIXME: abusing ident here.. add variable "type" 
-				if(currentJob.ident.equals("announce")) {
-					insertKey = "KSK@" + mStorage.getMessageBase() + "|"+ mStorage.getCurrentDateString() + "|Announce|" + announceEdition;
-				} else if(currentJob.ident.equals("identity")) {
-					insertKey = mStorage.config.insertKey + mStorage.getMessageBase() + "|" + mStorage.getCurrentDateString() + "|Identity-" + (long) (mStorage.getIdentEdition(mStorage.config.requestKey) + 1);
-				} else if(currentJob.ident.equals("message")) {
-					insertKey = mStorage.config.insertKey + mStorage.getMessageBase() + "|" + mStorage.getCurrentDateString() + "|Message-" + (long) (mStorage.getMessageEditionHint(mStorage.config.requestKey) + 1);
-				}
+                            // FIXME: abusing ident here.. add variable "type"
+                            switch (currentJob.ident) {
+                                case "announce":
+                                    insertKey = "KSK@" + mStorage.getMessageBase() + "|"+ mStorage.getCurrentDateString() + "|Announce|" + announceEdition;
+                                    break;
+                                case "identity":
+                                    insertKey = mStorage.config.insertKey + mStorage.getMessageBase() + "|" + mStorage.getCurrentDateString() + "|Identity-" + (long) (mStorage.getIdentEdition(mStorage.config.requestKey) + 1);
+                                    break;
+                                case "message":
+                                    insertKey = mStorage.config.insertKey + mStorage.getMessageBase() + "|" + mStorage.getCurrentDateString() + "|Message-" + (long) (mStorage.getMessageEditionHint(mStorage.config.requestKey) + 1);
+                                    break;
+                            }
 				
 				// inserting message
 				try {
@@ -217,35 +221,43 @@ public class Worker extends Thread  {
 					//System.err.println("[flircp] inserted message: " + messageLink.toString());
 					// FIXME: do we need the .free() later again if we fail and never reach the next statement?
 					mTmpBucket.free();
-					if(currentJob.ident.equals("announce")) {
-						announceEdition += 1;
-					} else if(currentJob.ident.equals("identity")){
-						mStorage.setIdentEdition(mStorage.config.requestKey, mStorage.getIdentEdition(mStorage.config.requestKey) +1);
-					} else if(currentJob.ident.equals("message")) {
-						mStorage.setMessageEditionHint(mStorage.config.requestKey, mStorage.getMessageEditionHint(mStorage.config.requestKey) +1);
-					}
+                                    switch (currentJob.ident) {
+                                        case "announce":
+                                            announceEdition += 1;
+                                            break;
+                                        case "identity":
+                                            mStorage.setIdentEdition(mStorage.config.requestKey, mStorage.getIdentEdition(mStorage.config.requestKey) +1);
+                                            break;
+                                        case "message":
+                                            mStorage.setMessageEditionHint(mStorage.config.requestKey, mStorage.getMessageEditionHint(mStorage.config.requestKey) +1);
+                                            break;
+                                    }
 				} catch (MalformedURLException e) {
 					System.err.println("[Worker]::run() MalformedURLException while inserting temporary bucket into message keyspace. " + e.getMessage());
 				} catch (IOException e) {
 					System.err.println("[Worker]::run() IOException while writing message bytes to temporary bucket. tried to insert message. " + e.getMessage());
 				} catch (InsertException e) {
 					if(e.getMode() == InsertException.InsertExceptionMode.COLLISION) {
-						if(currentJob.ident.equals("announce")) {
-							// TODO: how to get the current announce edition? saved edition from
-							// mStorage is not accurate as each announce fetcher does += 1.
-							// starting from 0 and save edition to local variable instead.
-							announceEdition += 1;
-						} else if(currentJob.ident.equals("identity")) {
-							// uh? this shouldn't be possible at all. new keys for every start now.
-							// after database backend is implemented identity editions should be always accurate too.
-							mStorage.setIdentEdition(mStorage.config.requestKey, mStorage.getIdentEdition(mStorage.config.requestKey) + 1);
-							System.err.println("[Worker]::run() COLLISION for identity insert. wtf?");
-						} else if(currentJob.ident.equals("message")) {
-							// uh? this shouldn't be possible at all. new keys for every start now.
-							// after database backend is implemented message editions should be always accurate too.
+                                            switch (currentJob.ident) {
+                                                case "announce":
+                                                    // TODO: how to get the current announce edition? saved edition from
+                                                    // mStorage is not accurate as each announce fetcher does += 1.
+                                                    // starting from 0 and save edition to local variable instead.
+                                                    announceEdition += 1;
+                                                    break;
+                                                case "identity":
+                                                    // uh? this shouldn't be possible at all. new keys for every start now.
+                                                    // after database backend is implemented identity editions should be always accurate too.
+                                                    mStorage.setIdentEdition(mStorage.config.requestKey, mStorage.getIdentEdition(mStorage.config.requestKey) + 1);
+                                                    System.err.println("[Worker]::run() COLLISION for identity insert. wtf?");
+                                                    break;
+                                                case "message":
+                                                    // uh? this shouldn't be possible at all. new keys for every start now.
+                                                    // after database backend is implemented message editions should be always accurate too.
 							mStorage.setMessageEditionHint(mStorage.config.requestKey, mStorage.getMessageEditionHint(mStorage.config.requestKey) + 1);
-							System.err.println("[Worker]::run() COLLISION for message insert. wtf?");
-						}
+                                                    System.err.println("[Worker]::run() COLLISION for message insert. wtf?");
+                                                    break;
+                                            }
 						// add the job on top of the queue again.
 						mQueue.addFirst(currentJob);
 					} else if(e.getMode() == InsertException.InsertExceptionMode.REJECTED_OVERLOAD) {

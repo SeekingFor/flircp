@@ -40,12 +40,12 @@ import freenet.support.api.HTTPRequest;
 import freenet.support.io.BucketTools;
 import freenet.support.io.Closer;
 
-public class WebInterface extends Toadlet implements LinkFilterExceptedToadlet{
-	private String mNameSpace;
-	private RAMstore mStorage;
-	private String mFormPassword;
-	private Worker mPtrWorker;
-	private BucketFactory mPtrTmpBucketFactory;
+public class WebInterface extends Toadlet implements LinkFilterExceptedToadlet {
+	private final String mNameSpace;
+	private final RAMstore mStorage;
+	private final String mFormPassword;
+	private final Worker mPtrWorker;
+	private final BucketFactory mPtrTmpBucketFactory;
         
         //FIXME: SOMEONE DO THIS RIGHT SOMEHOW!
         @Override
@@ -1275,7 +1275,7 @@ public class WebInterface extends Toadlet implements LinkFilterExceptedToadlet{
 		if(isNotImplemented) {
 			mPageNode.content.addChild("span","You reached this page because flircp was not in the mood to implement this feature.");
 		} else {
-			mPageNode.content.addChild("span","You reached this page because flircp did not found the requested URI");
+			mPageNode.content.addChild("span","You reached this page because flircp did not find the requested URI");
 		}
 		mPageNode.content.addChild("br");
 		mPageNode.content.addChild("br");
