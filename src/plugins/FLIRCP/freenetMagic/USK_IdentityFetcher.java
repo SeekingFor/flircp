@@ -8,8 +8,6 @@ import java.util.List;
 
 import plugins.FLIRCP.storage.RAMstore;
 
-import com.db4o.ObjectContainer;
-
 import freenet.client.FetchContext;
 import freenet.client.FetchException;
 import freenet.client.FetchResult;
@@ -22,7 +20,9 @@ import freenet.client.async.USKManager;
 import freenet.keys.FreenetURI;
 import freenet.keys.USK;
 import freenet.node.RequestClient;
+import freenet.node.RequestClientBuilder;
 import freenet.pluginmanager.PluginRespirator;
+import freenet.support.io.ResumeFailedException;
 
 public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, RequestClient {
 	private RAMstore mStorage;
@@ -35,7 +35,7 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 	public USK_IdentityFetcher(PluginRespirator pr, RAMstore Storage) {
 		mStorage = Storage;
 		mUSKmanager = pr.getNode().clientCore.uskManager;
-		mSubscriptions = new ArrayList<USK>();
+		mSubscriptions = new ArrayList<>();
 		concurrentFetchCount = 0;
 		mRequestClient = pr.getNode().clientCore.makeClient((short) 1, false, true);
 	}
@@ -63,7 +63,7 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 	}
 	
 	public void addInitialSubscription(String identRequestKey) {
-		FreenetURI identRequestURI = null;
+		FreenetURI identRequestURI;
 		try {
 			if(!identRequestKey.equals(mStorage.config.requestKey)) {
 				identRequestURI = new FreenetURI(identRequestKey).setKeyType("USK").setDocName(mStorage.getMessageBase() + "|" + mStorage.getCurrentDateString() + "|Identity");
@@ -102,7 +102,7 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 	}
 	
 	public void resetSubcriptions() {
-		List<USK> newSubscriptionList = new ArrayList<USK>();
+		List<USK> newSubscriptionList = new ArrayList<>();
 		try {
 			for(USK usk : mSubscriptions) {
 				mUSKmanager.unsubscribe(usk, this);
@@ -146,12 +146,7 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 	}
 
 	@Override
-	public void removeFrom(ObjectContainer container) {
-		// RequestClient
-	}
-
-	@Override
-	public void onFoundEdition(long l, USK key, ObjectContainer container,
+	public void onFoundEdition(long l, USK key,
 			ClientContext context, boolean metadata, short codec, byte[] data,
 			boolean newKnownGood, boolean newSlotToo) {
 		// usk_cb
@@ -168,12 +163,7 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 	}
 
 	@Override
-	public void onMajorProgress(ObjectContainer container) {
-		// ClientGetCallback
-	}
-
-	@Override
-	public void onSuccess(FetchResult result, ClientGetter state, ObjectContainer container) {
+	public void onSuccess(FetchResult result, ClientGetter state) {
 		concurrentFetchCount -= 1;
 		try {
 			mFreenetMessageParser.addMessage("identity", state.getURI().toString().split("/")[0].replace("USK","SSK") + "/", new String(result.asByteArray()).trim(), state.getURI().toString());
@@ -228,53 +218,53 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 	}
 
 	@Override
-	public void onFailure(FetchException e, ClientGetter state, ObjectContainer container) {
+	public void onFailure(FetchException e, ClientGetter state) {
 		// ClientGetCallback
 		concurrentFetchCount -= 1;
 		String ident = state.getURI().toString().split("/")[0].replace("USK", "SSK") + "/";
 		switch (e.getMode()) {
-		case FetchException.RECENTLY_FAILED:
+		case RECENTLY_FAILED:
 			checkRequestRestart(state.getURI(), "RECENTLY_FAILED");
 			break;
-		case FetchException.DATA_NOT_FOUND:
+		case DATA_NOT_FOUND:
 			checkRequestRestart(state.getURI(), "DATA_NOT_FOUND");
 			break;
-		case FetchException.ALL_DATA_NOT_FOUND:
+		case ALL_DATA_NOT_FOUND:
 			// should not possible while fetching SSKs without following redirects.
 			System.err.println("[USK_IdentityFetcher] ALL_DATA_NOT_FOUND. you should not see me. " + state.getURI().toString() + " " + e.getMessage());
 			break;
-		case FetchException.ROUTE_NOT_FOUND:
+		case ROUTE_NOT_FOUND:
 			// if hit we are trying to fetch something but the node does not have a proper connection.
 			checkRequestRestart(state.getURI(), "ROUTE_NOT_FOUND");
 			break;
-		case FetchException.REJECTED_OVERLOAD:
+		case REJECTED_OVERLOAD:
 			checkRequestRestart(state.getURI(), "REJECTED_OVERLOAD");
 			break;
-		case FetchException.INVALID_METADATA:
+		case INVALID_METADATA:
 			// wtf?
 			mStorage.identity_ddos +=1;
 			mStorage.userMap.get(ident).identity_ddos += 1;
 			checkInvalid(state.getURI(), "INVALID_METADATA", e.getMessage());
 			break;
-		case FetchException.TOO_BIG_METADATA:
+		case TOO_BIG_METADATA:
 			// wtf?
 			mStorage.identity_ddos +=1;
 			mStorage.userMap.get(ident).identity_ddos += 1;
 			checkInvalid(state.getURI(), "TOO_BIG_METADATA", e.getMessage());
 			break;
-		case FetchException.TOO_BIG:
+		case TOO_BIG:
 			// should not be possible while polling SSK's without following redirects.
 			mStorage.identity_ddos +=1;
 			mStorage.userMap.get(ident).identity_ddos += 1;
 			checkInvalid(state.getURI(), "TOO_BIG", e.getMessage());
 			break;
-		case FetchException.TOO_MANY_REDIRECTS:
+		case TOO_MANY_REDIRECTS:
 			checkInvalid(state.getURI(), "TOO_MANY_REDIRECTS", e.getMessage());
 			break;
-		case FetchException.TOO_MUCH_RECURSION:
+		case TOO_MUCH_RECURSION:
 			checkInvalid(state.getURI(), "TOO_MUCH_RECURSION");
 			break;
-		case FetchException.PERMANENT_REDIRECT:
+		case PERMANENT_REDIRECT:
 			if(e.newURI.toString().startsWith(state.getURI().toString().split("/")[0])) {
 				long newIdentEdition = e.newURI.getEdition();
 				if(newIdentEdition > mStorage.getIdentEdition(ident)) {
@@ -324,8 +314,8 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 		mFetchContext.localRequestOnly = false;
 		mFetchContext.maxArchiveLevels = 0; //?
 		mFetchContext.maxArchiveRestarts = 0; //?
-		mFetchContext.maxCheckBlocksPerSegment = 0; //?
-		mFetchContext.maxDataBlocksPerSegment = 0; //?
+		mFetchContext.maxCheckBlocksPerSegment = 3; //?
+		mFetchContext.maxDataBlocksPerSegment = 3; //?
 		//mFetchContext.maxMetadataSize = ?
 		// cooldown for 30 minutes, wtf? this is a real time chat plugin.
 		//mFetchContext.maxNonSplitfileRetries = -1;
@@ -344,11 +334,20 @@ public class USK_IdentityFetcher implements USKCallback, ClientGetCallback, Requ
 		try {
 			String ident = uri.toString().split("/", 2)[0].replace("USK@", "SSK@") + "/"; 
 			if(!ident.equals(mStorage.config.requestKey)) {
-				mRequestClient.fetch(uri, this, this, mFetchContext, (short) 2);
+				mRequestClient.fetch(uri, this, mFetchContext, (short) 2);
 				concurrentFetchCount += 1;
 			}
 		} catch (FetchException e) {
 			System.err.println("[USK_IdentityFetcher]::addRequest() FetchException " + e.getMessage());
 		}
 	}
+        
+    @Override
+    public void onResume(ClientContext cc) throws ResumeFailedException {
+    }
+
+    @Override
+    public RequestClient getRequestClient() {
+        return this;
+    }
 }

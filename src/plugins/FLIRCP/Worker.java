@@ -15,8 +15,8 @@ import freenet.client.InsertContext;
 import freenet.client.InsertException;
 import freenet.keys.FreenetURI;
 import freenet.pluginmanager.PluginRespirator;
-import freenet.support.api.Bucket;
 import freenet.support.api.BucketFactory;
+import freenet.support.api.RandomAccessBucket;
 import plugins.FLIRCP.freenetMagic.Async_AnnounceFetcher;
 import plugins.FLIRCP.freenetMagic.FreenetMessageParser;
 import plugins.FLIRCP.freenetMagic.USK_IdentityFetcher;
@@ -62,7 +62,7 @@ public class Worker extends Thread  {
 		mAsyncAnnounceFetcher.startFetching();
 		// insert at realtime prio 1.
 		mInserter = pr.getNode().clientCore.makeClient((short) 1, false, true);
-		mQueue = new ArrayDeque<PlainTextMessage>();
+		mQueue = new ArrayDeque<>();
 		mTmpBucketFactory = pr.getNode().clientCore.tempBucketFactory;
 	}
 	
@@ -188,7 +188,7 @@ public class Worker extends Thread  {
 				}				
 			} else {
 				//System.err.println("Threadworker has something in his queue.");
-				Bucket mTmpBucket;
+				RandomAccessBucket mTmpBucket;
 				InsertBlock mTmpInsertBlock;
 				OutputStream mTmpOutputStream;
 				String insertKey = "";
@@ -248,7 +248,7 @@ public class Worker extends Thread  {
 						}
 						// add the job on top of the queue again.
 						mQueue.addFirst(currentJob);
-					} else if(e.getMode() == InsertException.REJECTED_OVERLOAD) {
+					} else if(e.getMode() == InsertException.InsertExceptionMode.REJECTED_OVERLOAD) {
 						// just add the job to the queue again.
 						mQueue.addFirst(currentJob);
 					} else {
