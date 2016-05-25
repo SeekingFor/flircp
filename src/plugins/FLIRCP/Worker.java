@@ -229,7 +229,7 @@ public class Worker extends Thread  {
 				} catch (IOException e) {
 					System.err.println("[Worker]::run() IOException while writing message bytes to temporary bucket. tried to insert message. " + e.getMessage());
 				} catch (InsertException e) {
-					if(e.getMode() == InsertException.COLLISION) {
+					if(e.getMode() == InsertException.InsertExceptionMode.COLLISION) {
 						if(currentJob.ident.equals("announce")) {
 							// TODO: how to get the current announce edition? saved edition from
 							// mStorage is not accurate as each announce fetcher does += 1.
