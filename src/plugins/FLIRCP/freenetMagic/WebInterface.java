@@ -400,7 +400,7 @@ public class WebInterface extends Toadlet implements LinkFilterExceptedToadlet {
 		iFrameHTML += "<head>\n";
 		iFrameHTML += "<meta http-equiv='refresh' content='" + mStorage.config.iFrameRefreshInverval + ";url=/flircp/show?channel=" + channel.replace("#", "") + "#lastLine'>\n";
 		iFrameHTML += "</head>\n";
-		iFrameHTML += "<body>\n";
+		iFrameHTML += "<body onload=\"window.location.hash = 'lastLine';\">\n";
 		if(mStorage.getChannel(channel) != null && (mStorage.config.autojoinChannel
 				|| (!mStorage.config.autojoinChannel && mStorage.config.joinedChannels.contains(channel)))
 			) {
