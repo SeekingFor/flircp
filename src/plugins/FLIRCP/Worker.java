@@ -129,7 +129,7 @@ public class Worker extends Thread  {
 					message = "lastmessageindex=" + mStorage.getMessageEditionHint(mStorage.config.requestKey) + "\n";
 				}
 				message += "name=" + mStorage.config.nick + "\n";
-				message += "rsapublickey=" + mStorage.getRSA(mStorage.config.requestKey) + "\n";
+				message += "rsapublickey=" + mStorage.config.RSApublicKey + "\n";
 				message += "\n";
 				insertMessage(mStorage.new PlainTextMessage("identity", message, "", "", 0, 0));
 				lastIdentityInsert = now;
