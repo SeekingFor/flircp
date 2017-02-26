@@ -160,7 +160,7 @@ public class FLIRCP implements FredPlugin, FredPluginThreadless, FredPluginL10n 
 			} else {
 				mStorage.config.useDelimeterForNicks = true;
 			}
-			mStorage.config.autojoinChannel = Boolean.parseBoolean(configProps.getProperty("irc.channels.autojoin", "true"));
+			mStorage.config.autojoinChannel = Boolean.parseBoolean(configProps.getProperty("irc.channels.autojoin", "false"));
 			try {
 				out = new FileOutputStream("flircp/config", false);
 				configProps.store(out, "configuration created by flircp " + mStorage.config.version_major + "." + mStorage.config.version_minor + "." + mStorage.config.version_debug);
