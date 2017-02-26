@@ -215,7 +215,17 @@ public class Worker extends Thread  {
 					mTmpBucket.setReadOnly();
 					mTmpInsertBlock = new InsertBlock(mTmpBucket, null, new FreenetURI(insertKey));
 					InsertContext mInsertContext = mInserter.getInsertContext(true);
+					switch (currentJob.ident) {
+						case "message":
 					mInsertContext.maxInsertRetries = -1;
+							break;
+						default:
+							mInsertContext.maxInsertRetries = 1;
+					}
+						
+					mInsertContext.extraInsertsSingleBlock = 0;
+					mInsertContext.ignoreUSKDatehints = true;
+					
 					//mInserter.insert(mTmpInsertBlock, false, null, false, mInsertContext, this, (short) 1);
 					mInserter.insert(mTmpInsertBlock, false, null);
 					//System.err.println("[flircp] inserted message: " + messageLink.toString());
