@@ -405,7 +405,7 @@ public class WebInterface extends Toadlet implements LinkFilterExceptedToadlet {
 	private String createIframeContent(String channel) {
 		String iFrameHTML = "<html>\n";
 		iFrameHTML += "<head>\n";
-		iFrameHTML += "<meta http-equiv='refresh' content='" + mStorage.config.iFrameRefreshInverval + ";url=/flircp/show?channel=" + channel.replace("#", "") + "#lastLine'>\n";
+		iFrameHTML += "<meta http-equiv='refresh' content='" + mStorage.config.iFrameRefreshInverval + "'>\n";
 		iFrameHTML += "</head>\n";
 		iFrameHTML += "<body onload=\"window.location.hash = 'lastLine';\">\n";
 		if(mStorage.getChannel(channel) != null && (mStorage.config.autojoinChannel
