@@ -215,16 +215,20 @@ public class Worker extends Thread  {
 					mTmpBucket.setReadOnly();
 					mTmpInsertBlock = new InsertBlock(mTmpBucket, null, new FreenetURI(insertKey));
 					InsertContext mInsertContext = mInserter.getInsertContext(true);
+					// add speed hacks
 					switch (currentJob.ident) {
 						case "message":
 					mInsertContext.maxInsertRetries = -1;
 							break;
 						default:
-							mInsertContext.maxInsertRetries = 1;
+							mInsertContext.maxInsertRetries = 0; // only try once for status stuff
 					}
 						
 					mInsertContext.extraInsertsSingleBlock = 0;
-					mInsertContext.ignoreUSKDatehints = true;
+					mInsertContext.extraInsertsSplitfileHeaderBlock = 0;
+					mInsertContext.earlyEncode = true;
+					mInsertContext.dontCompress = true; // to minimize metadata
+					//mInsertContext.ignoreUSKDatehints = true; // date hints are inserted asynchronously
 					
 					//mInserter.insert(mTmpInsertBlock, false, null, false, mInsertContext, this, (short) 1);
 					mInserter.insert(mTmpInsertBlock, false, null);
