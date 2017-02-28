@@ -218,7 +218,7 @@ public class Worker extends Thread  {
 					// add speed hacks
 					switch (currentJob.ident) {
 						case "message":
-					mInsertContext.maxInsertRetries = -1;
+							mInsertContext.maxInsertRetries = -1;
 							break;
 						default:
 							mInsertContext.maxInsertRetries = 0; // only try once for status stuff
