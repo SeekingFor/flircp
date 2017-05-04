@@ -9,8 +9,6 @@ import java.util.List;
 
 import plugins.FLIRCP.storage.RAMstore;
 
-import com.db4o.ObjectContainer;
-
 import freenet.client.FetchContext;
 import freenet.client.FetchException;
 import freenet.client.FetchResult;
@@ -24,21 +22,21 @@ import freenet.keys.FreenetURI;
 import freenet.keys.USK;
 import freenet.node.RequestClient;
 import freenet.pluginmanager.PluginRespirator;
+import freenet.support.io.ResumeFailedException;
 
 public class USK_MessageFetcher implements USKCallback, ClientGetCallback, RequestClient {
-	private RAMstore mStorage;
+	private final RAMstore mStorage;
 	private FreenetMessageParser mFreenetMessageParser;
-	private HighLevelSimpleClient mFetcher;
-	private USKManager mUSKmanager;
+	private final HighLevelSimpleClient mFetcher;
+	private final USKManager mUSKmanager;
 	private List<USK> mSubscriptions;
 	public int concurrentFetchCount;
 	private HashMap<FreenetURI, Short> mDNFtracker;
 	
-	
 	public USK_MessageFetcher(RAMstore storage, PluginRespirator pr) {
 		mStorage = storage;
 		mUSKmanager = pr.getNode().clientCore.uskManager;
-		mSubscriptions = new ArrayList<USK>();
+		mSubscriptions = new ArrayList<>();
 		concurrentFetchCount = 0;
 		mFetcher = pr.getNode().clientCore.makeClient((short) 1, false, true);
 	}
@@ -67,7 +65,7 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 	}
 	
 	public void addInitialMessageSubscription(String identRequestKey) {
-		FreenetURI identRequestURI = null;
+		FreenetURI identRequestURI;
 		try {
 			if(!identRequestKey.equals(mStorage.config.requestKey)) {
 				identRequestURI = new FreenetURI(identRequestKey).setKeyType("USK").setDocName(mStorage.getMessageBase() + "|" + mStorage.getCurrentDateString() + "|Message");
@@ -105,7 +103,7 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 	}
 	
 	public void resetSubcriptions() {
-		List<USK> newSubscriptionList = new ArrayList<USK>();
+		List<USK> newSubscriptionList = new ArrayList<>();
 		try {
 			for(USK usk : mSubscriptions) {
 				mUSKmanager.unsubscribe(usk, this);
@@ -171,18 +169,12 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 		try {
 			String ident = uri.toString().split("/",2)[0].replace("USK@", "SSK@") + "/"; 
 			if(!ident.equals(mStorage.config.requestKey)) {
-				mFetcher.fetch(uri, this, this, mFetchContext, (short) 1);
+				mFetcher.fetch(uri, this, mFetchContext, (short) 1);
 				concurrentFetchCount += 1;
 			}
 		} catch (FetchException e) {
 			System.err.println("[USK_MessageFetcher]::addRequest() FetchException " + e.getMessage());
 		}
-	}
-
-	@Override
-	public void onMajorProgress(ObjectContainer arg0) {
-		// TODO Auto-generated method stub
-		
 	}
 
 	@Override
@@ -197,13 +189,6 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 		return true;
 	}
 
-	@Override
-	public void removeFrom(ObjectContainer arg0) {
-		// TODO Auto-generated method stub
-		
-	}
-	
-	
 	private void checkRequestRestart(FreenetURI uri, String reason) {
 		// non fatal errors. we can simply restart the request
 		// FIXME: add hashmap for tracking retries per uri until maxRetries is hit. print error then.
@@ -231,15 +216,15 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 	}
 
 	@Override
-	public void onFailure(FetchException e, ClientGetter state, ObjectContainer container) {
+	public void onFailure(FetchException e, ClientGetter state) {
 		String ident = state.getURI().toString().split("/")[0].replace("USK", "SSK") + "/";
 		switch (e.getMode()) {
-		case FetchException.RECENTLY_FAILED:
+		case RECENTLY_FAILED:
 			// just silently refetch
 			concurrentFetchCount -= 1;
 			restartRequest(state.getURI());
 			break;
-		case FetchException.DATA_NOT_FOUND:
+		case DATA_NOT_FOUND:
 			if(state.getURI().isUSK()) {
 				// initial USK request, no subscription active
 				checkRequestRestart(state.getURI(), "DATA_NOT_FOUND");
@@ -259,40 +244,40 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 				System.err.println("[USK_MessageFetcher] DATA_NOT_FOUND. maximal numbers of " + mStorage.config.maxMessageRetriesAfterDNF + " retires reached. ignoring message. " + state.getURI().toString());
 			}
 			break;
-		case FetchException.ALL_DATA_NOT_FOUND:
+		case ALL_DATA_NOT_FOUND:
 			// should not possible while fetching SSKs without following redirects.
 			concurrentFetchCount -= 1;
 			System.err.println("[USK_MessageFetcher] ALL_DATA_NOT_FOUND. you should not see me. " + e.getMessage() + " " + state.getURI().toString());
 			break;
-		case FetchException.ROUTE_NOT_FOUND:
+		case ROUTE_NOT_FOUND:
 			// if hit it we are trying to fetch something but the node does not have a proper connection.
 			checkRequestRestart(state.getURI(), "ROUTE_NOT_FOUND");
 			break;
-		case FetchException.REJECTED_OVERLOAD:
+		case REJECTED_OVERLOAD:
 			checkRequestRestart(state.getURI(), "REJECTED_OVERLOAD");
 			break;
-		case FetchException.INVALID_METADATA:
+		case INVALID_METADATA:
 			// wtf?
 			mStorage.message_ddos +=1;
 			mStorage.userMap.get(ident).message_ddos += 1;
 			checkInvalid(state.getURI(), "INVALID_METADATA", e.getMessage());
 			break;
-		case FetchException.TOO_BIG_METADATA:
+		case TOO_BIG_METADATA:
 			// wtf? 
 			mStorage.message_ddos +=1;
 			mStorage.userMap.get(ident).message_ddos += 1;
 			checkInvalid(state.getURI(), "TOO_BIG_METADATA", e.getMessage());
 			break;
-		case FetchException.TOO_BIG:
+		case TOO_BIG:
 			// should not be possible while polling SSK's without following redirects
 			mStorage.message_ddos +=1;
 			mStorage.userMap.get(ident).message_ddos += 1;
 			checkInvalid(state.getURI(), "TOO_BIG", e.getMessage());
 			break;
-		case FetchException.TOO_MANY_REDIRECTS:
+		case TOO_MANY_REDIRECTS:
 			checkInvalid(state.getURI(), "TOO_MANY_REDIRECTS", e.getMessage());
 			break;
-		case FetchException.TOO_MUCH_RECURSION:
+		case TOO_MUCH_RECURSION:
 			// FIXME: wtf?
 			concurrentFetchCount -= 1;
 			if(state.getURI().isUSK()) {
@@ -302,7 +287,7 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 				System.err.println("[USK_MessageFetcher] TOO_MUCH_RECURSION for SSK. wtf? " + e.getMessage() + " " + state.getURI().toString());
 			}
 			break;
-		case FetchException.PERMANENT_REDIRECT:
+		case PERMANENT_REDIRECT:
 			concurrentFetchCount -= 1;
 			if(e.newURI.toString().startsWith(state.getURI().toString().split("/")[0])) {
 				// this should work only for USK requests. we request USK only for the initial subscription so this should be save.
@@ -325,8 +310,7 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 	}
 
 	@Override
-	public void onSuccess(FetchResult result, ClientGetter state,
-			ObjectContainer container) {
+	public void onSuccess(FetchResult result, ClientGetter state) {
 		String ident = state.getURI().toString().split("/", 2)[0].replace("USK@","SSK@") + "/";
 		concurrentFetchCount -= 1;
 		if(!ident.equals(mStorage.config.requestKey)) {
@@ -358,7 +342,7 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 	}
 
 	@Override
-	public void onFoundEdition(long l, USK key, ObjectContainer container,
+	public void onFoundEdition(long l, USK key,
 			ClientContext context, boolean metadata, short codec, byte[] data,
 			boolean newKnownGood, boolean newSlotToo) {
 		String ident = key.getURI().toString().split("/", 2)[0].replace("USK@", "SSK@") + "/";
@@ -383,5 +367,14 @@ public class USK_MessageFetcher implements USKCallback, ClientGetCallback, Reque
 			}
 		}
 	}
+
+    @Override
+    public void onResume(ClientContext cc) throws ResumeFailedException {
+    }
+
+    @Override
+    public RequestClient getRequestClient() {        
+        return this;
+    }
 
 }

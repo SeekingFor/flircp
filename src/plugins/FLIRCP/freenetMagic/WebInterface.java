@@ -1,5 +1,6 @@
 package plugins.FLIRCP.freenetMagic;
 
+import freenet.clients.http.LinkFilterExceptedToadlet;
 import java.awt.image.RenderedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
@@ -39,12 +40,18 @@ import freenet.support.api.HTTPRequest;
 import freenet.support.io.BucketTools;
 import freenet.support.io.Closer;
 
-public class WebInterface extends Toadlet {
-	private String mNameSpace;
-	private RAMstore mStorage;
-	private String mFormPassword;
-	private Worker mPtrWorker;
-	private BucketFactory mPtrTmpBucketFactory;
+public class WebInterface extends Toadlet implements LinkFilterExceptedToadlet {
+	private final String mNameSpace;
+	private final RAMstore mStorage;
+	private final String mFormPassword;
+	private final Worker mPtrWorker;
+	private final BucketFactory mPtrTmpBucketFactory;
+        
+        //FIXME: SOMEONE DO THIS RIGHT SOMEHOW!
+        @Override
+        public boolean allowPOSTWithoutPassword() {
+		return true;
+	}
 	
 	public WebInterface(PluginRespirator pr, String path, RAMstore Storage, String formPassword, Worker ptrWorker) {
 		super(pr.getHLSimpleClient());
@@ -77,6 +84,13 @@ public class WebInterface extends Toadlet {
 		//	return;
 		//}
 		handleWebRequest(uri, req, ctx);
+	}
+    @Override
+    protected void writeHTMLReply(ToadletContext ctx, int code, String desc, String reply) throws ToadletContextClosedException, IOException {
+        byte[] buffer = reply.getBytes("UTF-8");
+        // send reply headers fproxy allows using frames (via Content-Security-Policy)
+		ctx.sendReplyHeadersFProxy(code, desc, null, "text/html; charset=utf-8", buffer.length);
+		ctx.writeData(buffer, 0, buffer.length);
 	}
 	private void handleWebRequest(URI uri, HTTPRequest req, ToadletContext ctx) throws ToadletContextClosedException, IOException, RedirectException {
 		// We check the requested URI against a whitelist. Any request not found here will result in a info page.
@@ -391,9 +405,9 @@ public class WebInterface extends Toadlet {
 	private String createIframeContent(String channel) {
 		String iFrameHTML = "<html>\n";
 		iFrameHTML += "<head>\n";
-		iFrameHTML += "<meta http-equiv='refresh' content='" + mStorage.config.iFrameRefreshInverval + ";url=show?channel=" + channel.replace("#", "") + "#lastLine'>\n";
+		iFrameHTML += "<meta http-equiv='refresh' content='" + mStorage.config.iFrameRefreshInverval + "'>\n";
 		iFrameHTML += "</head>\n";
-		iFrameHTML += "<body>\n";
+		iFrameHTML += "<body onload=\"window.location.hash = 'lastLine';\">\n";
 		if(mStorage.getChannel(channel) != null && (mStorage.config.autojoinChannel
 				|| (!mStorage.config.autojoinChannel && mStorage.config.joinedChannels.contains(channel)))
 			) {
@@ -922,7 +936,7 @@ public class WebInterface extends Toadlet {
 		//iframe.addAttribute("height", "100%");
 		iframe.addAttribute("scrolling", "no");
 		iframe.addAttribute("name", "flircp_iframe");
-		iframe.addAttribute("src", "show?channel="+ channel.replace("#","") + "#lastLine");
+		iframe.addAttribute("src", "/flircp/show?channel="+ channel.replace("#","") + "#lastLine");
 		iframe.setContent("you need to activate frames to use flircp");
 		HTMLNode formMain = new HTMLNode("form");
 		formMain.addAttribute("action", "sendMessage?channel=" + channel.replace("#",""));
@@ -1268,7 +1282,7 @@ public class WebInterface extends Toadlet {
 		if(isNotImplemented) {
 			mPageNode.content.addChild("span","You reached this page because flircp was not in the mood to implement this feature.");
 		} else {
-			mPageNode.content.addChild("span","You reached this page because flircp did not found the requested URI");
+			mPageNode.content.addChild("span","You reached this page because flircp did not find the requested URI");
 		}
 		mPageNode.content.addChild("br");
 		mPageNode.content.addChild("br");
@@ -1313,4 +1327,9 @@ public class WebInterface extends Toadlet {
 		}
 		return mPageNode;
 	}
+
+    @Override
+    public boolean isLinkExcepted(URI link) {
+        return true;
+    }
 }
